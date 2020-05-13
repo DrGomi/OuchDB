@@ -1,0 +1,21 @@
+{
+  "name": "@examples/ouch-db",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "dist/main.cjs.js",
+  "module": "dist/main.esm.js",
+  "types": "dist/main.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "ts-engine build --library",
+    "lint": "ts-engine lint",
+    "test": "ts-engine test",
+    "typecheck": "ts-engine typecheck --emit"
+  },
+  "devDependencies": {
+    "@ts-engine/babel-preset": "^1.4.1",
+    "@ts-engine/cli": "^1.4.1",
+    "@ts-engine/eslint-config": "^1.4.1"
+  },
+  "dependencies": {}
+}

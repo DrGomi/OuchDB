@@ -1,0 +1,7 @@
+module.exports = {
+    presets: [
+        "@ts-engine/babel-preset",
+        ["env", {"modules": false} ]
+    ],
+    // your config goes here
+  };
