@@ -10,10 +10,7 @@ import {
     SQLResultSet,
     SQLError,
     TxCallback,
-    TxSuccessCallback,
-    TxErrorCallback,
-    ResultSetError,
-    WebSQLDatabase 
+
 } from './SQLite.types';
 // import { Window, Database } from './WebSQL.types';
 
@@ -21,13 +18,15 @@ import { PouchDBRow } from './PouchDB.types';
 
 export class OuchDB {
     db: Database;
+    httpFetch;
 
     constructor(dbName: string) {
         // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
         this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
     }
 
-    getTx = async(): Promise<SQLTransaction> => new Promise((resolve, reject) => 
+    getTx = async(): Promise<SQLTransaction> => 
+        new Promise((resolve, reject) => 
             this.db.transaction(
                 (tx) => resolve(tx),
                 (err) => reject(err),
