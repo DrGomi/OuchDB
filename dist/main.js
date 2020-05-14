@@ -2,6 +2,41 @@
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
+function _arrayWithHoles(arr) {
+  if (Array.isArray(arr)) return arr;
+}
+
+var arrayWithHoles = _arrayWithHoles;
+
+function _iterableToArrayLimit(arr, i) {
+  if (typeof Symbol === "undefined" || !(Symbol.iterator in Object(arr))) return;
+  var _arr = [];
+  var _n = true;
+  var _d = false;
+  var _e = undefined;
+
+  try {
+    for (var _i = arr[Symbol.iterator](), _s; !(_n = (_s = _i.next()).done); _n = true) {
+      _arr.push(_s.value);
+
+      if (i && _arr.length === i) break;
+    }
+  } catch (err) {
+    _d = true;
+    _e = err;
+  } finally {
+    try {
+      if (!_n && _i["return"] != null) _i["return"]();
+    } finally {
+      if (_d) throw _e;
+    }
+  }
+
+  return _arr;
+}
+
+var iterableToArrayLimit = _iterableToArrayLimit;
+
 function _arrayLikeToArray(arr, len) {
   if (len == null || len > arr.length) len = arr.length;
 
@@ -14,6 +49,29 @@ function _arrayLikeToArray(arr, len) {
 
 var arrayLikeToArray = _arrayLikeToArray;
 
+function _unsupportedIterableToArray(o, minLen) {
+  if (!o) return;
+  if (typeof o === "string") return arrayLikeToArray(o, minLen);
+  var n = Object.prototype.toString.call(o).slice(8, -1);
+  if (n === "Object" && o.constructor) n = o.constructor.name;
+  if (n === "Map" || n === "Set") return Array.from(o);
+  if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return arrayLikeToArray(o, minLen);
+}
+
+var unsupportedIterableToArray = _unsupportedIterableToArray;
+
+function _nonIterableRest() {
+  throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
+}
+
+var nonIterableRest = _nonIterableRest;
+
+function _slicedToArray(arr, i) {
+  return arrayWithHoles(arr) || iterableToArrayLimit(arr, i) || unsupportedIterableToArray(arr, i) || nonIterableRest();
+}
+
+var slicedToArray = _slicedToArray;
+
 function _arrayWithoutHoles(arr) {
   if (Array.isArray(arr)) return arrayLikeToArray(arr);
 }
@@ -25,17 +83,6 @@ function _iterableToArray(iter) {
 }
 
 var iterableToArray = _iterableToArray;
-
-function _unsupportedIterableToArray(o, minLen) {
-  if (!o) return;
-  if (typeof o === "string") return arrayLikeToArray(o, minLen);
-  var n = Object.prototype.toString.call(o).slice(8, -1);
-  if (n === "Object" && o.constructor) n = o.constructor.name;
-  if (n === "Map" || n === "Set") return Array.from(o);
-  if (n === "Arguments" || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(n)) return arrayLikeToArray(o, minLen);
-}
-
-var unsupportedIterableToArray = _unsupportedIterableToArray;
 
 function _nonIterableSpread() {
   throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.");
@@ -851,12 +898,14 @@ var defineProperty = _defineProperty;
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
 // import { Window, Database } from './WebSQL.types';
-var OuchDB = function OuchDB(dbName) {
+var OuchDB = function OuchDB(db) {
   var _this = this;
 
   classCallCheck(this, OuchDB);
 
   defineProperty(this, "db", void 0);
+
+  defineProperty(this, "httpFetch", void 0);
 
   defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
     return regenerator.wrap(function _callee$(_context) {
@@ -894,7 +943,7 @@ var OuchDB = function OuchDB(dbName) {
   defineProperty(this, "mapDocRows", function (res) {
     return Object.keys(res.rows).map(function (_) {
       return res.rows[_];
-    });
+    })[0];
   });
 
   defineProperty(this, "getRevInt", function (inRev) {
@@ -925,22 +974,41 @@ var OuchDB = function OuchDB(dbName) {
 
   defineProperty(this, "killOldRevs", function (origSeq, filterSeq) {
     return _this.getTx().then(function (tx) {
-      return origSeq.filter(function (x) {
+      return Promise.all(origSeq.filter(function (x) {
         return !filterSeq.includes(x);
-      }).forEach(function (x) {
+      }).map(function (x) {
         return _this.deleteRev(tx, x);
+      }));
+    });
+  });
+
+  defineProperty(this, "getTables", function () {
+    return new Promise(function (resolve, reject) {
+      return _this.getTx().then(function (tx) {
+        return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (tx, res) {
+          return resolve([tx, res]);
+        }, function (tx, err) {
+          return reject([tx, err]);
+        });
       });
+    }).then(function (txCb) {
+      var _txCb = slicedToArray(txCb, 2),
+          _ = _txCb[0],
+          res = _txCb[1];
+
+      var tables = res['rows']['_array'].map(function (y) {
+        return y['tbl_name'];
+      });
+      return Promise.resolve(tables);
     });
   });
 
   defineProperty(this, "drobTable", function (tx, tableName) {
     return new Promise(function (resolve, reject) {
       return tx.executeSql("DROP TABLE \"".concat(tableName, "\""), [], function (tx, res) {
-        console.log("DROOOOP'D ".concat(tableName));
-        resolve([tx, res]);
+        return resolve([tx, res]);
       }, function (tx, err) {
-        console.log("NOOOOO ".concat(tableName), err);
-        reject([tx, err]);
+        return reject([tx, err]);
       });
     });
   });
@@ -949,15 +1017,16 @@ var OuchDB = function OuchDB(dbName) {
     return _this.getTx().then(function (tx) {
       return Promise.all(['attach-store', 'local-store', 'attach-seq-store', 'document-store', 'metadata-store'].map(function (x) {
         return _this.drobTable(tx, x);
-      })).then(function () {
-        console.log('DROPPED IT LIKE IT\'S HOT!');
-        return Promise.resolve(tx);
-      });
-    });
+      }));
+    } // .then(() => {
+    //     console.log('DROPPED IT LIKE IT\'S HOT!');
+    //     return Promise.resolve(tx);
+    // })
+    );
   });
 
-  // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
-  this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024);
+  this.db = db; // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
+  // this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
 };
 
 exports.OuchDB = OuchDB;

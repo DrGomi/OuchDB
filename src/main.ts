@@ -10,7 +10,8 @@ import {
     SQLResultSet,
     SQLError,
     TxCallback,
-
+    TxSuccessCallback,
+    TxErrorCallback
 } from './SQLite.types';
 // import { Window, Database } from './WebSQL.types';
 
@@ -20,9 +21,10 @@ export class OuchDB {
     db: Database;
     httpFetch;
 
-    constructor(dbName: string) {
+    constructor(db: Database) {
+        this.db = db;
         // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
-        this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
+        // this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
     }
 
     getTx = async(): Promise<SQLTransaction> => 
@@ -46,7 +48,7 @@ export class OuchDB {
         );
 
     mapDocRows = (res: SQLResultSet): ResultSetRow[] => 
-        Object.keys(res.rows).map(_ => res.rows[_]);
+        Object.keys(res.rows).map(_ => res.rows[_])[0];
     
     getRevInt =(inRev: string): number => 
         parseInt(inRev.split('-')[0]);
@@ -70,35 +72,36 @@ export class OuchDB {
             )
     );
   
-    killOldRevs = ( origSeq, filterSeq) => 
+    killOldRevs = ( origSeq, filterSeq): Promise<any> => 
         this.getTx().then(tx => 
-            origSeq
+            Promise.all(
+                origSeq
             .filter(x => !filterSeq.includes(x))
-            .forEach(x => this.deleteRev(tx, x))
+            .map(x => this.deleteRev(tx, x))
+            )
         );
 
-    // getTables = (tx: SQLTransaction): Promise<TxCallback> =>  new Promise((resolve, reject) => 
-    //         tx.executeSql(
-    //             'SELECT tbl_name from sqlite_master WHERE type = "table"',
-    //             [],
-    //             (tx, res) => resolve([tx, res]),
-    //             (tx, err) => reject([tx, err])
-    //         )
-    // );
+    getTables = (): Promise<string[]>  =>  new Promise((resolve, reject)=> 
+        this.getTx().then(tx =>
+            tx.executeSql(
+                'SELECT tbl_name from sqlite_master WHERE type = "table"',
+                [],
+                (tx, res) => resolve([tx, res]),
+                (tx, err) => reject([tx, err])
+            )
+        )
+    ).then((txCb: TxSuccessCallback) => {
+        const [_, res] = txCb;
+        const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
+        return Promise.resolve(tables);
+    })
 
     drobTable = (tx: SQLTransaction, tableName: string) => new Promise((resolve, reject) =>
         tx.executeSql(
             `DROP TABLE "${tableName}"`,
             [],
-            (tx, res) => {
-                console.log(`DROOOOP'D ${tableName}`);
-                resolve([tx, res]);
-            },
-            (tx, err) => {
-                console.log(`NOOOOO ${tableName}`, err);
-                reject([tx, err]);
-            }
-            )
+            (tx, res) => resolve([tx, res]),
+            (tx, err) => reject([tx, err]))
         );
 
     dropFunnyTables = () =>
@@ -111,9 +114,10 @@ export class OuchDB {
                     'document-store',
                     'metadata-store'
                 ].map(x => this.drobTable(tx, x))
-            ).then(() => {
-                console.log('DROPPED IT LIKE IT\'S HOT!');
-                return Promise.resolve(tx);
-            })
+            )
+            // .then(() => {
+            //     console.log('DROPPED IT LIKE IT\'S HOT!');
+            //     return Promise.resolve(tx);
+            // })
         );
 };
