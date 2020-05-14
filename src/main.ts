@@ -5,7 +5,7 @@ import {
     Database,
     SQLiteCallback,
     // ResultSet,
-    ResultSetRow,
+    PouchDBRow,
     SQLTransaction,
     SQLResultSet,
     SQLError,
@@ -15,7 +15,7 @@ import {
 } from './SQLite.types';
 // import { Window, Database } from './WebSQL.types';
 
-import { PouchDBRow } from './PouchDB.types';
+// import { PouchDBRow } from './PouchDB.types';
 
 export class OuchDB {
     db: Database;
@@ -23,10 +23,9 @@ export class OuchDB {
 
     constructor(db: Database) {
         this.db = db;
-        // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
-        // this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
     }
 
+    // resolves execution context from db
     getTx = async(): Promise<SQLTransaction> => 
         new Promise((resolve, reject) => 
             this.db.transaction(
@@ -35,11 +34,13 @@ export class OuchDB {
             )
         );
 
-    getAllRows = (table: string): Promise<TxCallback> => 
+    // resolves execution context & resultset with all rows from given table
+    getAllRows = (): Promise<TxSuccessCallback> => 
         this.getTx().then(tx => 
             new Promise((resolve, reject) =>   
                 tx.executeSql(
-                    `SELECT * FROM "${table}"`, 
+                    // `SELECT * FROM "${table}"`, 
+                    `SELECT * FROM "by-sequence"`, 
                     [], 
                     (tx, res) => resolve([tx, res]),
                     (tx, err) => reject([tx, err])
@@ -47,41 +48,63 @@ export class OuchDB {
             )
         );
 
-    mapDocRows = (res: SQLResultSet): ResultSetRow[] => 
+    // extracts rows from resultset
+    mapDocRows = (res: SQLResultSet): PouchDBRow[] => 
         Object.keys(res.rows).map(_ => res.rows[_])[0];
-    
+
+    // transforms pouchdb revision string into integer
     getRevInt =(inRev: string): number => 
         parseInt(inRev.split('-')[0]);
 
-    compareDocs = (leftDoc, rightDoc) =>
-        leftDoc.doc_id !== rightDoc.doc_id 
+    // compares 2 docs by doc_id & revision value
+    compareDocs = (left: PouchDBRow, right: PouchDBRow) =>
+        left.doc_id !== right.doc_id 
             ? true 
-            : leftDoc == rightDoc || 
-               this.getRevInt(leftDoc.rev) > this.getRevInt(rightDoc.rev);
+            : left == right || 
+              this.getRevInt(left.rev) > this.getRevInt(right.rev);
 
-    filterOldRevs = (origSeq: ResultSetRow[]): ResultSetRow[] => 
-        origSeq.reduce<ResultSetRow[]>((acc, iter) => 
-            ([...acc, iter].filter(x => this.compareDocs(x, iter))), []);
+    // returns unique rows with the highest revision id
+    filterOldRevs = (origSeq: PouchDBRow[]): PouchDBRow[] => 
+        origSeq.reduce<PouchDBRow[]>(
+            (acc, iter) => (   // add iter to acc...
+                [...acc, iter] // ...and filter iter/older doc (with same id) out
+                .filter(x => this.compareDocs(x, iter))
+            ),[]);
 
-    deleteRev = (tx, doc) =>  new Promise((resolve, reject) => 
-            tx.executeSql(
-                `DELETE FROM "by-sequence" WHERE doc_id = "${doc.doc_id}" AND rev = "${doc.rev}"`,
-                [],
-                () => resolve(),
-                (err) => reject(err)
-            )
+    // deletes provided pouchdb doc from "by-sequence" table 
+    deleteRev = (tx, doc: PouchDBRow): Promise<void> =>  new Promise((resolve, reject) => 
+        tx.executeSql(
+            `DELETE FROM "by-sequence" WHERE
+             doc_id = "${doc.doc_id}"
+             AND rev = "${doc.rev}"`,
+            [],
+            () => resolve(),
+            (err) => reject(err)
+        )
     );
   
-    killOldRevs = ( origSeq, filterSeq): Promise<any> => 
+    // resolves when all docs not present in filterSeq are deleted from table
+    killOldRevs = (origSeq: PouchDBRow[], filterSeq: PouchDBRow[]): Promise<any> => 
         this.getTx().then(tx => 
             Promise.all(
-                origSeq
-            .filter(x => !filterSeq.includes(x))
-            .map(x => this.deleteRev(tx, x))
+                origSeq // only delete docs exclusive to origSeq
+                .filter(x => !filterSeq.includes(x))
+                .map(x => this.deleteRev(tx, x))
             )
         );
 
-    getTables = (): Promise<string[]>  =>  new Promise((resolve, reject)=> 
+    // retrives all docs & deletes old versions of docs from table
+    pruneRevs = () => 
+        this.getAllRows()
+        .then(txNrs => {
+            const [_, res] = txNrs;
+            const origSeq: PouchDBRow[] = this.mapDocRows(res);
+            const filterSeq: PouchDBRow[] = this.filterOldRevs(origSeq);
+            return this.killOldRevs(origSeq, filterSeq);
+        })
+        
+    // resolves all table names from db as Array<string> 
+    getTables = (): Promise<string[]> => new Promise((resolve, reject)=> 
         this.getTx().then(tx =>
             tx.executeSql(
                 'SELECT tbl_name from sqlite_master WHERE type = "table"',
@@ -96,6 +119,7 @@ export class OuchDB {
         return Promise.resolve(tables);
     })
 
+    // drops table from db with given table name
     drobTable = (tx: SQLTransaction, tableName: string) => new Promise((resolve, reject) =>
         tx.executeSql(
             `DROP TABLE "${tableName}"`,
@@ -104,6 +128,7 @@ export class OuchDB {
             (tx, err) => reject([tx, err]))
         );
 
+    // resolves when all unneccessary pouchdb tables are dropped 
     dropFunnyTables = () =>
         this.getTx().then(tx => 
             Promise.all(
@@ -115,9 +140,5 @@ export class OuchDB {
                     'metadata-store'
                 ].map(x => this.drobTable(tx, x))
             )
-            // .then(() => {
-            //     console.log('DROPPED IT LIKE IT\'S HOT!');
-            //     return Promise.resolve(tx);
-            // })
         );
 };

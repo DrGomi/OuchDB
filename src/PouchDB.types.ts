@@ -1,6 +1,6 @@
-import { SQLTransaction, SQLResultSet, SQLError } from './SQLite.types';
+import { SQLTransaction, SQLResultSet, SQLError, ResultSetRow } from './SQLite.types';
 
-export interface PouchDBRow{
+export interface PouchDBRow extends ResultSetRow {
     deleted: number;
     doc_id: string;
     json: string;

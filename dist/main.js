@@ -898,6 +898,7 @@ var defineProperty = _defineProperty;
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
 // import { Window, Database } from './WebSQL.types';
+// import { PouchDBRow } from './PouchDB.types';
 var OuchDB = function OuchDB(db) {
   var _this = this;
 
@@ -928,10 +929,11 @@ var OuchDB = function OuchDB(db) {
     }, _callee);
   })));
 
-  defineProperty(this, "getAllRows", function (table) {
+  defineProperty(this, "getAllRows", function () {
     return _this.getTx().then(function (tx) {
       return new Promise(function (resolve, reject) {
-        return tx.executeSql("SELECT * FROM \"".concat(table, "\""), [], function (tx, res) {
+        return tx.executeSql( // `SELECT * FROM "${table}"`, 
+        "SELECT * FROM \"by-sequence\"", [], function (tx, res) {
           return resolve([tx, res]);
         }, function (tx, err) {
           return reject([tx, err]);
@@ -950,21 +952,24 @@ var OuchDB = function OuchDB(db) {
     return parseInt(inRev.split('-')[0]);
   });
 
-  defineProperty(this, "compareDocs", function (leftDoc, rightDoc) {
-    return leftDoc.doc_id !== rightDoc.doc_id ? true : leftDoc == rightDoc || _this.getRevInt(leftDoc.rev) > _this.getRevInt(rightDoc.rev);
+  defineProperty(this, "compareDocs", function (left, right) {
+    return left.doc_id !== right.doc_id ? true : left == right || _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
   });
 
   defineProperty(this, "filterOldRevs", function (origSeq) {
     return origSeq.reduce(function (acc, iter) {
-      return [].concat(toConsumableArray(acc), [iter]).filter(function (x) {
-        return _this.compareDocs(x, iter);
-      });
+      return (// add iter to acc...
+        [].concat(toConsumableArray(acc), [iter]) // ...and filter iter/older doc (with same id) out
+        .filter(function (x) {
+          return _this.compareDocs(x, iter);
+        })
+      );
     }, []);
   });
 
   defineProperty(this, "deleteRev", function (tx, doc) {
     return new Promise(function (resolve, reject) {
-      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = \"".concat(doc.doc_id, "\" AND rev = \"").concat(doc.rev, "\""), [], function () {
+      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE\n             doc_id = \"".concat(doc.doc_id, "\"\n             AND rev = \"").concat(doc.rev, "\""), [], function () {
         return resolve();
       }, function (err) {
         return reject(err);
@@ -974,11 +979,26 @@ var OuchDB = function OuchDB(db) {
 
   defineProperty(this, "killOldRevs", function (origSeq, filterSeq) {
     return _this.getTx().then(function (tx) {
-      return Promise.all(origSeq.filter(function (x) {
+      return Promise.all(origSeq // only delete docs exclusive to origSeq
+      .filter(function (x) {
         return !filterSeq.includes(x);
       }).map(function (x) {
         return _this.deleteRev(tx, x);
       }));
+    });
+  });
+
+  defineProperty(this, "pruneRevs", function () {
+    return _this.getAllRows().then(function (txNrs) {
+      var _txNrs = slicedToArray(txNrs, 2),
+          _ = _txNrs[0],
+          res = _txNrs[1];
+
+      var origSeq = _this.mapDocRows(res);
+
+      var filterSeq = _this.filterOldRevs(origSeq);
+
+      return _this.killOldRevs(origSeq, filterSeq);
     });
   });
 
@@ -1018,16 +1038,12 @@ var OuchDB = function OuchDB(db) {
       return Promise.all(['attach-store', 'local-store', 'attach-seq-store', 'document-store', 'metadata-store'].map(function (x) {
         return _this.drobTable(tx, x);
       }));
-    } // .then(() => {
-    //     console.log('DROPPED IT LIKE IT\'S HOT!');
-    //     return Promise.resolve(tx);
-    // })
-    );
+    });
   });
 
-  this.db = db; // SOQ/12709074/how-do-you-explicitly-set-a-new-property-on-window-in-typescript
-  // this.db = window['openDatabase'](dbName, '1', dbName, 2 * 1024 * 1024)
-};
+  this.db = db;
+} // resolves execution context from db
+;
 
 exports.OuchDB = OuchDB;
 //# sourceMappingURL=main.js.map

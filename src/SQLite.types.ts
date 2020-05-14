@@ -106,13 +106,21 @@ export interface ResultSetRow {
     [column: string]: any;
 }
 
+export interface PouchDBRow extends ResultSetRow {
+  deleted: number;
+  doc_id: string;
+  json: string;
+  rev: string;
+  seq: number;
+}
+
 export type SQLiteCallback = (
   error?: Error | null,
   resultSet?: (ResultSetError | ResultSet)[]
 ) => void;
 
 
-type ResultOrError = SQLResultSet|SQLError;
+type ResultOrError = PouchDBRow|SQLError;
 
 export type TxCallback = [SQLTransaction, ResultOrError];
 export type TxSuccessCallback = [SQLTransaction, SQLResultSet];
