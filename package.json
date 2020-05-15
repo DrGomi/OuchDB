@@ -18,6 +18,7 @@
     "@ts-engine/eslint-config": "^1.4.1"
   },
   "dependencies": {
+    "node-fetch": "^2.6.0",
     "pouchdb": "^7.2.1",
     "pouchdb-adapter-node-websql": "^7.0.0",
     "pouchdb-load": "^1.4.6",

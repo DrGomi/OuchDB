@@ -1,50 +1,72 @@
-// const OuchDB = require('../dist/main')['OuchDB'];
-// const openDatabase = require('websql');
-// const PouchDB = require('pouchdb');
-// PouchDB.plugin(require('pouchdb-load'));
-// PouchDB.plugin(require('pouchdb-adapter-node-websql'));
+const OuchDB = require('../dist/main')['OuchDB'];
+const openDatabase = require('websql');
+const PouchDB = require('pouchdb');
+PouchDB.plugin(require('pouchdb-load'));
+PouchDB.plugin(require('pouchdb-adapter-node-websql'));
+const fs = require('fs');
 
-// const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
-// {"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
-// {"seq":4}`
+const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
+{"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
+{"seq":4}`
 
-// let pouch = new PouchDB(':turtles:', {adapter: 'websql'});
-// const updateWeapon = (name, arm) =>
-//   pouch.get(name).then(itm => pouch.put({...itm, ...{ weapon: arm }}));
+const request = url => 
+    fetch(url)
+    .then(res => res.json())
+    .then(json => Promise.resolve(json.rows))
+    .catch(err => console.log(err));
 
-// const webSQLDB = openDatabase(':turtles:', '1', 'pouch turtles', 1);
-
-// const ouch = new OuchDB(webSQLDB);
-
-// beforeAll(() => {
-//     return pouch.destroy()
-//     .then(() => {
-//       pouch = new PouchDB(':turtles:', {adapter: 'websql'});
-//       return pouch.load(dump)
-//     });
-//   });
+const allRemoteDocs = [
+    { id:"_design/access", key:"_design/access", value: { rev:"1-451e825a7ec62a68a2a7576cd3d14ad2" }},
+    { id:"donatello", key:"donatello", value: { rev:"5-b587bb2575475e3e50c7807c404d4d49" }},
+    { id:"leonardo", key:"leonardo", value: { rev:"1-c95202ca170be0318d085b33528f7995" }},
+    { id:"michelangelo", key:"michelangelo", value: { rev:"3-c4902caddb145cfb9ec444d49a12d7cf" }},
+    { id:"splinter", key:"splinter", value: { rev:"1-g2b746e11c7f4011483289337ca2dfe3" }}
+];
 
 
-// it('creates successfully PouchDB & OuchDB', () => {
+const sqliteName = 'turtles_2'
+const pouch = new PouchDB(sqliteName, {adapter: 'websql'});
+const updateWeapon = (name, arm) =>
+  pouch.get(name).then(itm => pouch.put({...itm, ...{ weapon: arm }}));
+
+const webSQLDB = openDatabase(sqliteName, '1', 'pouch turtles', 1);
+
+const ouch = new OuchDB(webSQLDB);
+
+beforeAll(() => pouch.load(dump));
+
+afterAll(() => fs.unlinkSync(sqliteName) )
+
+
+it('creates successfully PouchDB & OuchDB', () => {
+    expect.assertions(2);
+    expect(pouch).toBeDefined();
+    return expect(ouch).toBeDefined();
+  });
+
+it('transforms local db rows into CouchDB comtaible _all_docs format', () => {
+    expect.assertions(4);
+    return ouch.getLocalAllDocs()
+    .then(allDocs => {
+        const allDocsKeys = Object.keys(allDocs);
+        expect(allDocsKeys).toContain('total_rows');
+        expect(allDocsKeys).toContain('offset');
+        expect(allDocsKeys).toContain('rows');
+        expect(allDocs.total_rows).toEqual(allDocs.rows.length);
+    })
+  });
+
+
+// it('compares local with remote docs & returns list with sync actions', () => {
 //     expect.assertions(2);
-//     expect(pouch).toBeDefined()
-//     return expect(ouch).toBeDefined()
-//   });
-
-// it('loads dump file from dev-server into PouchDB', () => {
-//     expect.assertions(1);
-//     return pouch.info()
-//     .then(info => expect(info.doc_count).toEqual(4))
-//   });
-
-
-// it('returns all tables from PouchDB', () => {
-//     expect.assertions(2);
-//       ouch.getTables()
-//       .then(tbls => expect(tbls).toContain("by-sequence"))
-
-//       return ouch.getTables()
-//       .then(rows => expect(rows.length).toEqual(7))
+//     return Promise.all([
+//         ouch.getLocalAllDocs(),
+//         Promise.resolve(allRemoteDocs)
+//     ])
+//     .then(allDBDocs => {
+//         const docDiff = ouch.compareWithRemote(allDBDocs);
+//         expect(docDiff).toEqual()
+//     })
 //   });
 
 

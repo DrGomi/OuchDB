@@ -7,3 +7,19 @@ export interface PouchDBRow extends ResultSetRow {
     rev: string;
     seq: number;
 }
+
+interface AllDocsRev {
+    rev: string;
+}
+
+export interface AllDocsRow {
+    id: string;
+    key: string;
+    value: AllDocsRev
+}
+
+export interface AllDocsResponse {
+    total_rows: number;
+    offset: number;
+    rows: AllDocsRow[];
+}

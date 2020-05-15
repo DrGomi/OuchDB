@@ -897,8 +897,6 @@ function _defineProperty(obj, key, value) {
 var defineProperty = _defineProperty;
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
-// import { Window, Database } from './WebSQL.types';
-// import { PouchDBRow } from './PouchDB.types';
 var OuchDB = function OuchDB(db) {
   var _this = this;
 
@@ -956,14 +954,21 @@ var OuchDB = function OuchDB(db) {
     return left.doc_id !== right.doc_id ? true : left == right || _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
   });
 
+  defineProperty(this, "check4SameID", function (docs, checkDoc) {
+    return !!docs.find(function (doc) {
+      return doc.doc_id === checkDoc.doc_id;
+    });
+  });
+
   defineProperty(this, "filterOldRevs", function (origSeq) {
     return origSeq.reduce(function (acc, iter) {
-      return (// add iter to acc...
-        [].concat(toConsumableArray(acc), [iter]) // ...and filter iter/older doc (with same id) out
-        .filter(function (x) {
-          return _this.compareDocs(x, iter);
-        })
-      );
+      // try to filter out docs (with same id & lower revision) ...
+      var filterRows = acc.filter(function (x) {
+        return _this.compareDocs(x, iter);
+      }); // ...check if doc with same id is still present in filtered rows...
+
+      return _this.check4SameID(filterRows, iter) ? filterRows // this doc's rev id higher 
+      : [].concat(toConsumableArray(filterRows), [iter]); // OR: add the iter doc to list
     }, []);
   });
 
@@ -1039,6 +1044,39 @@ var OuchDB = function OuchDB(db) {
         return _this.drobTable(tx, x);
       }));
     });
+  });
+
+  defineProperty(this, "getLocalAllDocs", function () {
+    return _this.getAllRows().then(function (txNrs) {
+      var _txNrs2 = slicedToArray(txNrs, 2),
+          _ = _txNrs2[0],
+          res = _txNrs2[1];
+
+      var rows = _this.mapDocRows(res);
+
+      var allDocs = {
+        total_rows: rows.length,
+        offset: 0,
+        rows: rows.map(function (doc) {
+          return {
+            id: doc.doc_id,
+            key: doc.doc_id,
+            value: {
+              rev: doc.rev
+            }
+          };
+        })
+      };
+      return Promise.resolve(allDocs);
+    });
+  });
+
+  defineProperty(this, "compareWithRemote", function (_ref2) {
+    var _ref3 = slicedToArray(_ref2, 2),
+        localDocs = _ref3[0],
+        remoteDocs = _ref3[1];
+
+    return [];
   });
 
   this.db = db;

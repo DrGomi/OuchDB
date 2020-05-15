@@ -13,9 +13,8 @@ import {
     TxSuccessCallback,
     TxErrorCallback
 } from './SQLite.types';
-// import { Window, Database } from './WebSQL.types';
 
-// import { PouchDBRow } from './PouchDB.types';
+import { AllDocsRow, AllDocsResponse } from './PouchDB.types';
 
 export class OuchDB {
     db: Database;
@@ -62,14 +61,21 @@ export class OuchDB {
             ? true 
             : left == right || 
               this.getRevInt(left.rev) > this.getRevInt(right.rev);
+    
+    check4SameID = (docs: PouchDBRow[], checkDoc: PouchDBRow): boolean => 
+                    !!(docs.find(doc => doc.doc_id === checkDoc.doc_id));
 
     // returns unique rows with the highest revision id
     filterOldRevs = (origSeq: PouchDBRow[]): PouchDBRow[] => 
         origSeq.reduce<PouchDBRow[]>(
-            (acc, iter) => (   // add iter to acc...
-                [...acc, iter] // ...and filter iter/older doc (with same id) out
-                .filter(x => this.compareDocs(x, iter))
-            ),[]);
+            (acc, iter) => {
+                // try to filter out docs (with same id & lower revision) ...
+                const filterRows = acc.filter(x => this.compareDocs(x, iter));
+                // ...check if doc with same id is still present in filtered rows...
+                return this.check4SameID(filterRows, iter) 
+                    ? filterRows                    // this doc's rev id higher 
+                    : [...filterRows, ...[iter]];   // OR: add the iter doc to list
+            },[]);
 
     // deletes provided pouchdb doc from "by-sequence" table 
     deleteRev = (tx, doc: PouchDBRow): Promise<void> =>  new Promise((resolve, reject) => 
@@ -141,4 +147,27 @@ export class OuchDB {
                 ].map(x => this.drobTable(tx, x))
             )
         );
+
+    // resolves all local rows transformed into couchdb _all_docs response 
+    getLocalAllDocs = (): Promise<AllDocsResponse> => 
+        this.getAllRows()
+        .then(txNrs => {
+            const [_, res] = txNrs;
+            const rows: PouchDBRow[] = this.mapDocRows(res)
+            const allDocs: AllDocsResponse =  {
+                total_rows: rows.length,
+                offset: 0,
+                rows: rows.map(doc => ({
+                    id: doc.doc_id,
+                    key: doc.doc_id,
+                    value: { rev: doc.rev }
+                })) as AllDocsRow[]
+            };
+            return Promise.resolve(allDocs);
+        })
+
+    compareWithRemote = ([localDocs, remoteDocs]: [AllDocsRow[], AllDocsRow[]]) =>
+        ([])
+        
+    
 };
