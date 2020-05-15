@@ -15,13 +15,17 @@ const request = url =>
     .then(json => Promise.resolve(json.rows))
     .catch(err => console.log(err));
 
-const allRemoteDocs = [
+const allRemoteDocs = {
+    total_rows: 6,
+    offset: 0,
+    rows: [
     { id:"_design/access", key:"_design/access", value: { rev:"1-451e825a7ec62a68a2a7576cd3d14ad2" }},
     { id:"donatello", key:"donatello", value: { rev:"5-b587bb2575475e3e50c7807c404d4d49" }},
     { id:"leonardo", key:"leonardo", value: { rev:"1-c95202ca170be0318d085b33528f7995" }},
     { id:"michelangelo", key:"michelangelo", value: { rev:"3-c4902caddb145cfb9ec444d49a12d7cf" }},
     { id:"splinter", key:"splinter", value: { rev:"1-g2b746e11c7f4011483289337ca2dfe3" }}
-];
+    ]
+};
 
 
 const sqliteName = 'turtles_2'
@@ -44,7 +48,7 @@ it('creates successfully PouchDB & OuchDB', () => {
     return expect(ouch).toBeDefined();
   });
 
-it('transforms local db rows into CouchDB comtaible _all_docs format', () => {
+it('transforms local db rows into CouchDB compatible _all_docs format', () => {
     expect.assertions(4);
     return ouch.getLocalAllDocs()
     .then(allDocs => {
@@ -56,18 +60,38 @@ it('transforms local db rows into CouchDB comtaible _all_docs format', () => {
     })
   });
 
+it('maps _all_docs format to rows containing only docs', () => {
+    expect.assertions(3);
+    return Promise.resolve(allRemoteDocs)
+    .then(allDocsResponse => {
+        expect(allDocsResponse === Object(allDocsResponse)).toBeTruthy()
+        const cleanDocs = ouch.getCleanAllDocRows(allDocsResponse);
+        expect(Array.isArray(cleanDocs)).toBeTruthy()
+        const docIds = cleanDocs.map(x => x.id);
+        expect(docIds).not.toContain("_design/access");
 
-// it('compares local with remote docs & returns list with sync actions', () => {
-//     expect.assertions(2);
-//     return Promise.all([
-//         ouch.getLocalAllDocs(),
-//         Promise.resolve(allRemoteDocs)
-//     ])
-//     .then(allDBDocs => {
-//         const docDiff = ouch.compareWithRemote(allDBDocs);
-//         expect(docDiff).toEqual()
-//     })
-//   });
+    })
+  });
+
+
+it('compares local with remote docs & returns list with sync actions', () => {
+    expect.assertions(6);
+    return Promise.all([
+        ouch.getLocalAllDocs(),
+        Promise.resolve(allRemoteDocs)
+    ])
+    .then(allDBDocs => {
+        const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows)
+        const docDiff = ouch.compareWithRemote(onlyRows);
+        console.log(docDiff)
+        expect(docDiff.length).toEqual(4);
+        expect(docDiff).toContainEqual({ state: 'update', id: 'donatello' });
+        expect(docDiff).toContainEqual({ state: 'update', id: 'michelangelo' });
+        expect(docDiff).toContainEqual({ state: 'delete', id: 'raphael' });
+        expect(docDiff).toContainEqual({ state: 'add', id: 'splinter' });
+        expect(docDiff.map(i => i.id)).not.toContainEqual('leonardo');
+    })
+  });
 
 
 // it('maps all rows from "by-sequence" into an array', () => {

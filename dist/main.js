@@ -897,6 +897,10 @@ function _defineProperty(obj, key, value) {
 var defineProperty = _defineProperty;
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
+// interface DocSyncStateCheck {
+//     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
+//     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
+// }
 var OuchDB = function OuchDB(db) {
   var _this = this;
 
@@ -950,8 +954,13 @@ var OuchDB = function OuchDB(db) {
     return parseInt(inRev.split('-')[0]);
   });
 
-  defineProperty(this, "compareDocs", function (left, right) {
-    return left.doc_id !== right.doc_id ? true : left == right || _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
+  defineProperty(this, "compareLocalDocs", function (left, right) {
+    return left.doc_id !== right.doc_id ? true // : left == right ||
+    : _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
+  });
+
+  defineProperty(this, "compareSyncDocs", function (left, right) {
+    return left.id !== right.id ? true : _this.getRevInt(left.value.rev) > _this.getRevInt(right.value.rev);
   });
 
   defineProperty(this, "check4SameID", function (docs, checkDoc) {
@@ -960,11 +969,11 @@ var OuchDB = function OuchDB(db) {
     });
   });
 
-  defineProperty(this, "filterOldRevs", function (origSeq) {
+  defineProperty(this, "filterOldLocalRevs", function (origSeq) {
     return origSeq.reduce(function (acc, iter) {
       // try to filter out docs (with same id & lower revision) ...
       var filterRows = acc.filter(function (x) {
-        return _this.compareDocs(x, iter);
+        return _this.compareLocalDocs(x, iter);
       }); // ...check if doc with same id is still present in filtered rows...
 
       return _this.check4SameID(filterRows, iter) ? filterRows // this doc's rev id higher 
@@ -993,7 +1002,7 @@ var OuchDB = function OuchDB(db) {
     });
   });
 
-  defineProperty(this, "pruneRevs", function () {
+  defineProperty(this, "pruneOldLocalRevs", function () {
     return _this.getAllRows().then(function (txNrs) {
       var _txNrs = slicedToArray(txNrs, 2),
           _ = _txNrs[0],
@@ -1001,7 +1010,7 @@ var OuchDB = function OuchDB(db) {
 
       var origSeq = _this.mapDocRows(res);
 
-      var filterSeq = _this.filterOldRevs(origSeq);
+      var filterSeq = _this.filterOldLocalRevs(origSeq);
 
       return _this.killOldRevs(origSeq, filterSeq);
     });
@@ -1071,12 +1080,48 @@ var OuchDB = function OuchDB(db) {
     });
   });
 
-  defineProperty(this, "compareWithRemote", function (_ref2) {
-    var _ref3 = slicedToArray(_ref2, 2),
-        localDocs = _ref3[0],
-        remoteDocs = _ref3[1];
+  defineProperty(this, "getCleanAllDocRows", function (rawResponse) {
+    return rawResponse.rows.filter(function (row) {
+      return row.id !== "_design/access";
+    });
+  });
 
-    return [];
+  defineProperty(this, "compareWithRemote", function (localNremoteDocs) {
+    var _localNremoteDocs = slicedToArray(localNremoteDocs, 2),
+        localDocs = _localNremoteDocs[0],
+        remoteDocs = _localNremoteDocs[1];
+
+    var changedRows = localDocs.filter(function (l) {
+      return !!remoteDocs.find(function (r) {
+        return l.id === r.id && _this.getRevInt(l.value.rev) < _this.getRevInt(r.value.rev);
+      });
+    }).map(function (doc) {
+      return {
+        state: 'update',
+        id: doc.id
+      };
+    });
+    var onlyLocalRows = localDocs.filter(function (l) {
+      return !remoteDocs.find(function (r) {
+        return l.id === r.id;
+      });
+    }).map(function (doc) {
+      return {
+        state: 'delete',
+        id: doc.id
+      };
+    });
+    var onlyRemoteRows = remoteDocs.filter(function (r) {
+      return !localDocs.find(function (l) {
+        return r.id === l.id;
+      });
+    }).map(function (doc) {
+      return {
+        state: 'add',
+        id: doc.id
+      };
+    });
+    return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyLocalRows), toConsumableArray(onlyRemoteRows));
   });
 
   this.db = db;
