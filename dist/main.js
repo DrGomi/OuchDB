@@ -2,6 +2,44 @@
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
+function _objectWithoutPropertiesLoose(source, excluded) {
+  if (source == null) return {};
+  var target = {};
+  var sourceKeys = Object.keys(source);
+  var key, i;
+
+  for (i = 0; i < sourceKeys.length; i++) {
+    key = sourceKeys[i];
+    if (excluded.indexOf(key) >= 0) continue;
+    target[key] = source[key];
+  }
+
+  return target;
+}
+
+var objectWithoutPropertiesLoose = _objectWithoutPropertiesLoose;
+
+function _objectWithoutProperties(source, excluded) {
+  if (source == null) return {};
+  var target = objectWithoutPropertiesLoose(source, excluded);
+  var key, i;
+
+  if (Object.getOwnPropertySymbols) {
+    var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
+
+    for (i = 0; i < sourceSymbolKeys.length; i++) {
+      key = sourceSymbolKeys[i];
+      if (excluded.indexOf(key) >= 0) continue;
+      if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
+      target[key] = source[key];
+    }
+  }
+
+  return target;
+}
+
+var objectWithoutProperties = _objectWithoutProperties;
+
 function _arrayWithHoles(arr) {
   if (Array.isArray(arr)) return arr;
 }
@@ -896,19 +934,35 @@ function _defineProperty(obj, key, value) {
 
 var defineProperty = _defineProperty;
 
+function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (Object.getOwnPropertySymbols) { var symbols = Object.getOwnPropertySymbols(object); if (enumerableOnly) symbols = symbols.filter(function (sym) { return Object.getOwnPropertyDescriptor(object, sym).enumerable; }); keys.push.apply(keys, symbols); } return keys; }
+
+function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
+
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
 // interface DocSyncStateCheck {
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
 // }
-var OuchDB = function OuchDB(db) {
+var OuchDB = function OuchDB(db, httpClient) {
   var _this = this;
 
   classCallCheck(this, OuchDB);
 
   defineProperty(this, "db", void 0);
 
-  defineProperty(this, "httpFetch", void 0);
+  defineProperty(this, "httpClient", void 0);
+
+  defineProperty(this, "takeSyncActions", {
+    'delete': function _delete(tx, act) {
+      return _this.deleteSyncAction(tx, act.id);
+    },
+    'add': function add(tx, act) {
+      return _this.addSyncAction(tx, act.doc);
+    },
+    'update': function update(tx, act) {
+      return _this.updateSyncAction(tx, act.doc);
+    }
+  });
 
   defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
     return regenerator.wrap(function _callee$(_context) {
@@ -934,8 +988,7 @@ var OuchDB = function OuchDB(db) {
   defineProperty(this, "getAllRows", function () {
     return _this.getTx().then(function (tx) {
       return new Promise(function (resolve, reject) {
-        return tx.executeSql( // `SELECT * FROM "${table}"`, 
-        "SELECT * FROM \"by-sequence\"", [], function (tx, res) {
+        return tx.executeSql("SELECT * FROM \"by-sequence\"", [], function (tx, res) {
           return resolve([tx, res]);
         }, function (tx, err) {
           return reject([tx, err]);
@@ -1086,45 +1139,152 @@ var OuchDB = function OuchDB(db) {
     });
   });
 
+  defineProperty(this, "sameIdNHigherRev", function (localDoc) {
+    return function (remoteDoc) {
+      return localDoc.id === remoteDoc.id && _this.getRevInt(localDoc.value.rev) < _this.getRevInt(remoteDoc.value.rev);
+    };
+  });
+
+  defineProperty(this, "map2SyncAction", function (syncState) {
+    return function (doc) {
+      return {
+        state: syncState,
+        id: doc.id
+      };
+    };
+  });
+
+  defineProperty(this, "getChangedDocs", function (leftRows, rightRows) {
+    return leftRows.filter(function (leftDoc) {
+      return !!rightRows.find(_this.sameIdNHigherRev(leftDoc));
+    }).map(_this.map2SyncAction('update'));
+  });
+
+  defineProperty(this, "getExclusiveDocs", function (leftRows, rightRows, syncState) {
+    return leftRows.filter(function (lDoc) {
+      return !rightRows.find(function (rDoc) {
+        return lDoc.id === rDoc.id;
+      });
+    }).map(_this.map2SyncAction(syncState));
+  });
+
   defineProperty(this, "compareWithRemote", function (localNremoteDocs) {
+    // destructure all_docs-rows tuple
     var _localNremoteDocs = slicedToArray(localNremoteDocs, 2),
         localDocs = _localNremoteDocs[0],
-        remoteDocs = _localNremoteDocs[1];
+        remoteDocs = _localNremoteDocs[1]; // changed docs need to be converted to 'update' actions
 
-    var changedRows = localDocs.filter(function (l) {
-      return !!remoteDocs.find(function (r) {
-        return l.id === r.id && _this.getRevInt(l.value.rev) < _this.getRevInt(r.value.rev);
+
+    var changedRows = _this.getChangedDocs(localDocs, remoteDocs); // docs exclusive to remote response need to be added to db
+
+
+    var onlyRemoteRows = _this.getExclusiveDocs(remoteDocs, localDocs, 'add'); // docs exclusive present in local db need to be deleted from db
+
+
+    var onlyLocalRows = _this.getExclusiveDocs(localDocs, remoteDocs, 'delete');
+
+    return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyRemoteRows), toConsumableArray(onlyLocalRows));
+  });
+
+  defineProperty(this, "updateSyncAction", function (tx, doc) {
+    return new Promise(function (resolve, reject) {
+      var _id = doc._id,
+          _rev = doc._rev,
+          jsonValue = objectWithoutProperties(doc, ["_id", "_rev"]);
+
+      tx.executeSql("UPDATE \"by-sequence\" SET json = ?, rev = ?  WHERE doc_id = ?", [JSON.stringify(jsonValue), doc._rev, doc._id], function (tx, res) {
+        return resolve([tx, res]);
+      }, function (tx, err) {
+        return reject([tx, err]);
       });
-    }).map(function (doc) {
-      return {
-        state: 'update',
-        id: doc.id
-      };
     });
-    var onlyLocalRows = localDocs.filter(function (l) {
-      return !remoteDocs.find(function (r) {
-        return l.id === r.id;
+  });
+
+  defineProperty(this, "addSyncAction", function (tx, doc) {
+    return new Promise(function (resolve, reject) {
+      var _id = doc._id,
+          _rev = doc._rev,
+          jsonValue = objectWithoutProperties(doc, ["_id", "_rev"]);
+
+      tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, doc._id, doc._rev], function (tx, res) {
+        return resolve([tx, res]);
+      }, function (tx, err) {
+        return reject([tx, err]);
       });
-    }).map(function (doc) {
-      return {
-        state: 'delete',
-        id: doc.id
-      };
     });
-    var onlyRemoteRows = remoteDocs.filter(function (r) {
-      return !localDocs.find(function (l) {
-        return r.id === l.id;
+  });
+
+  defineProperty(this, "deleteSyncAction", function (tx, docID) {
+    return new Promise(function (resolve, reject) {
+      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = ?", [docID], function (tx, res) {
+        return resolve([tx, res]);
+      }, function (tx, err) {
+        return reject([tx, err]);
       });
-    }).map(function (doc) {
-      return {
-        state: 'add',
-        id: doc.id
-      };
     });
-    return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyLocalRows), toConsumableArray(onlyRemoteRows));
+  });
+
+  defineProperty(this, "getRemoteDoc", function (docID) {
+    return _this.httpClient.get("http://127.0.0.1:5500/resources/".concat(docID, ".json"));
+  });
+
+  defineProperty(this, "getAllRemoteDocs", function () {
+    return (// need to change the endpoint
+      _this.httpClient.get("http://127.0.0.1:5500/resources/_all_docs_include_docs.json")
+    );
+  });
+
+  defineProperty(this, "convertDoc2Map", function (acc, row) {
+    acc[row.id] = row.doc;
+    return acc;
+  });
+
+  defineProperty(this, "enrichDocSyncAction", function (action, docsMap) {
+    return action.state !== 'delete' ? _objectSpread(_objectSpread({}, action), {
+      doc: docsMap[action.id]
+    }) : action;
+  });
+
+  defineProperty(this, "prepareSyncActions", function (actions) {
+    return _this.getAllRemoteDocs().then(function (res) {
+      var docsMap = res.rows.filter(function (row) {
+        return row.id !== '_design/access';
+      }).reduce(_this.convertDoc2Map, {});
+      var enrichedActions = actions.reduce(function (acc, action) {
+        return [].concat(toConsumableArray(acc), [_this.enrichDocSyncAction(action, docsMap)]);
+      }, []);
+      return Promise.resolve(enrichedActions);
+    });
+  });
+
+  defineProperty(this, "checkDocSyncStatus", function (actions) {
+    return actions.length > 0 && // are there any actions at all?...
+    // ...and do these actions require another get '_all_docs' request?
+    !!actions.find(function (act) {
+      return act.state === 'update' || act.state === 'add';
+    }) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
+    // (actions[0].state === 'update' || actions[0].state === 'add') 
+    ;
+  });
+
+  defineProperty(this, "syncActions2DB", function (tx, actions) {
+    return actions.map(function (action) {
+      return _this.takeSyncActions[action.state](tx, action);
+    });
+  });
+
+  defineProperty(this, "processSyncActions", function (actions) {
+    return (_this.checkDocSyncStatus(actions) ? _this.prepareSyncActions(actions) : Promise.resolve(actions)).then(function (enrichedActions) {
+      return _this.getTx().then(function (tx) {
+        return Promise.all(_this.syncActions2DB(tx, enrichedActions));
+      });
+    }).then(function () {
+      return Promise.resolve();
+    });
   });
 
   this.db = db;
+  this.httpClient = httpClient;
 } // resolves execution context from db
 ;
 

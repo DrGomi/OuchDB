@@ -14,16 +14,28 @@ import {
     TxErrorCallback
 } from './SQLite.types';
 
-import { AllDocsRow, AllDocsResponse } from './PouchDB.types';
+import { 
+    AllDocsRow,
+    AllDocsResponse,
+    AllFullDocsRow,
+    AllFullDocsResponse,
+    TurtleDoc,
+    TurtleFullDocsRow,
+    TurtleAllFullDocsResponse,
+    TurtleDocMap,
+    HTTPClient
+ } from './PouchDB.types';
 
 type AllDocRowsTuple = [AllDocsRow[], AllDocsRow[]];
 
-type DocSyncState = 'unchanged' | 'delete' | 'update' | 'add';
+type DocSyncState = 'delete' | 'update' | 'add';
 
 interface DocSyncAction {
     state: DocSyncState;
     id: string;
+    doc?: TurtleDoc;
 }
+
 
 // interface DocSyncStateCheck {
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
@@ -32,9 +44,17 @@ interface DocSyncAction {
 
 export class OuchDB {
     db: Database;
-    httpFetch;
-    constructor(db: Database) {
+    httpClient: HTTPClient;
+
+    takeSyncActions = {
+        'delete': (tx, act: DocSyncAction) => this.deleteSyncAction(tx, act.id),
+        'add': (tx, act: DocSyncAction) => this.addSyncAction(tx, act.doc),
+        'update': (tx, act: DocSyncAction) => this.updateSyncAction(tx, act.doc),
+    };
+
+    constructor(db: Database, httpClient: HTTPClient) {
         this.db = db;
+        this.httpClient = httpClient;
     }
 
     // resolves execution context from db
@@ -51,7 +71,6 @@ export class OuchDB {
         this.getTx().then(tx => 
             new Promise((resolve, reject) =>   
                 tx.executeSql(
-                    // `SELECT * FROM "${table}"`, 
                     `SELECT * FROM "by-sequence"`, 
                     [], 
                     (tx, res) => resolve([tx, res]),
@@ -186,25 +205,129 @@ export class OuchDB {
 
     getCleanAllDocRows = (rawResponse: AllDocsResponse): AllDocsRow[] => 
         rawResponse.rows.filter(row => row.id !== "_design/access");
+    
+    sameIdNHigherRev = (localDoc: AllDocsRow) => (remoteDoc: AllDocsRow): Boolean =>
+        localDoc.id === remoteDoc.id && 
+        this.getRevInt(localDoc.value.rev) < this.getRevInt(remoteDoc.value.rev)
 
-    compareWithRemote = (localNremoteDocs: AllDocRowsTuple) => {
+    map2SyncAction = (syncState: DocSyncState) =>  (doc: AllDocsRow): DocSyncAction => 
+        ({ state: syncState, id: doc.id });
+
+    getChangedDocs = (leftRows: AllDocsRow[], rightRows: AllDocsRow[]): DocSyncAction[] => 
+        leftRows
+        .filter(leftDoc => !!(rightRows.find(this.sameIdNHigherRev(leftDoc))) )
+        .map(this.map2SyncAction('update'));
+    
+    getExclusiveDocs = (
+                        leftRows: AllDocsRow[],
+                        rightRows: AllDocsRow[],
+                        syncState: DocSyncState
+                        ): DocSyncAction[] =>
+        leftRows
+        .filter(lDoc => !(rightRows.find(rDoc => lDoc.id === rDoc.id)))
+        .map(this.map2SyncAction(syncState));
+
+    compareWithRemote = (localNremoteDocs: AllDocRowsTuple): DocSyncAction[] => {
+        // destructure all_docs-rows tuple
         const [localDocs, remoteDocs] = localNremoteDocs;
-        const changedRows: DocSyncAction[] = localDocs.filter(l => 
-            !!(remoteDocs.find(r => 
-                    l.id === r.id && 
-                    this.getRevInt(l.value.rev) < this.getRevInt(r.value.rev)
-                )
+
+        // changed docs need to be converted to 'update' actions
+        const changedRows = this.getChangedDocs(localDocs, remoteDocs);
+
+        // docs exclusive to remote response need to be added to db
+        const onlyRemoteRows = this.getExclusiveDocs(remoteDocs, localDocs, 'add');
+
+        // docs exclusive present in local db need to be deleted from db
+        const onlyLocalRows = this.getExclusiveDocs(localDocs, remoteDocs, 'delete');
+
+        return [...changedRows, ...onlyRemoteRows, ...onlyLocalRows];
+    }
+
+    updateSyncAction = (tx: SQLTransaction, doc: TurtleDoc): Promise<TxSuccessCallback> => 
+        new Promise((resolve, reject) => {
+            const {_id, _rev, ...jsonValue} = doc;
+            tx.executeSql(
+                `UPDATE "by-sequence" SET json = ?, rev = ?  WHERE doc_id = ?`,
+                [JSON.stringify(jsonValue), doc._rev, doc._id],
+                (tx, res) => resolve([tx, res]),
+                (tx, err) => reject([tx, err]),
             )
-        ).map(doc => ({ state: 'update', id: doc.id }));
+    });
 
-        const onlyLocalRows: DocSyncAction[] = localDocs.filter(l => 
-            !(remoteDocs.find(r => l.id === r.id))
-            ).map(doc => ({ state: 'delete', id: doc.id }));
+    addSyncAction = (tx: SQLTransaction, doc: TurtleDoc): Promise<TxSuccessCallback> => 
+        new Promise((resolve, reject) => {
+            const {_id, _rev, ...jsonValue} = doc;
+            tx.executeSql(
+                `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
+                 VALUES (?, ?, ?, ?)`,
+                [JSON.stringify(jsonValue), 0, doc._id, doc._rev],
+                (tx, res) => resolve([tx, res]),
+                (tx, err) => reject([tx, err]),
+            )
+    });
 
-        const onlyRemoteRows: DocSyncAction[] = remoteDocs.filter(r => 
-            !(localDocs.find(l => r.id === l.id))
-            ).map(doc => ({ state: 'add', id: doc.id }));
+    deleteSyncAction = (tx: SQLTransaction, docID: string): Promise<TxSuccessCallback> => 
+        new Promise((resolve, reject) =>
+            tx.executeSql(
+                `DELETE FROM "by-sequence" WHERE doc_id = ?`,
+                [docID],
+                (tx, res) => resolve([tx, res]),
+                (tx, err) => reject([tx, err]),
+            )
+    );
 
-        return [...changedRows, ...onlyLocalRows, ...onlyRemoteRows];
+    getRemoteDoc = (docID: string): any =>
+            this.httpClient.get(`http://127.0.0.1:5500/resources/${docID}.json`)
+
+    getAllRemoteDocs = ():Promise<TurtleAllFullDocsResponse> => // need to change the endpoint
+        this.httpClient.get(`http://127.0.0.1:5500/resources/_all_docs_include_docs.json`)
+
+    convertDoc2Map = (acc: TurtleDocMap, row: TurtleFullDocsRow): TurtleDocMap => {
+        acc[row.id] = row.doc;
+        return acc;
+    }
+        // ({...acc, ...{ [row.id]: row.doc }});
+
+    enrichDocSyncAction = (action: DocSyncAction, docsMap: TurtleDocMap) =>
+        (action.state !== 'delete') 
+            ? { ...action, ...{ doc: docsMap[action.id] }}
+            : action;
+
+    // SOQ/18004296/how-to-bulk-fetch-by-ids-in-couchdb-without-creating-a-view
+    prepareSyncActions = (actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
+        this.getAllRemoteDocs()
+        .then((res: TurtleAllFullDocsResponse) => {
+            const docsMap: TurtleDocMap = res.rows
+                .filter(row => row.id !== '_design/access')
+                .reduce(this.convertDoc2Map, {} as TurtleDocMap);
+
+            const enrichedActions = actions.reduce((acc, action: DocSyncAction) =>
+                ([...acc, ...[this.enrichDocSyncAction(action, docsMap)] ]), 
+            [] as DocSyncAction[]);
+
+            return Promise.resolve(enrichedActions);
+        })
+
+    checkDocSyncStatus = (actions: DocSyncAction[]): Boolean => (
+        actions.length > 0 && // are there any actions at all?...
+        // ...and do these actions require another get '_all_docs' request?
+        !!actions.find(act => (act.state === 'update' || act.state === 'add'))
+        // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
+        // (actions[0].state === 'update' || actions[0].state === 'add') 
+    );
+
+    syncActions2DB = (tx: SQLTransaction, actions: DocSyncAction[]): Promise<TxSuccessCallback>[] => 
+        actions.map(action => this.takeSyncActions[action.state](tx, action))
+
+    processSyncActions = (actions: DocSyncAction[]): Promise<void> =>  {
+        return (
+            this.checkDocSyncStatus(actions)
+                ? this.prepareSyncActions(actions)
+                : Promise.resolve(actions)
+        )
+        .then((enrichedActions: DocSyncAction[]) => 
+            this.getTx().then((tx: SQLTransaction) =>
+                Promise.all(this.syncActions2DB(tx, enrichedActions)))
+        ).then(() => Promise.resolve());
     }
 };
