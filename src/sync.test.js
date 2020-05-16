@@ -128,7 +128,7 @@ it('requests all_docs from remote endpoint', () => {
       { state: 'add', id: 'splinter' },
       { state: 'delete', id: 'raphael' }
     ];
-    return ouch.prepareSyncActions(docActions)
+    return ouch.getRemoteDocs4SyncActions(docActions)
     .then(eActions =>  {
       expect(eActions.length).toBe(4);
       expect(eActions.find(x => x.id == 'donatello').doc).toBeDefined()
@@ -156,7 +156,10 @@ it('requests all_docs from remote endpoint', () => {
       expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
     })
     .then(() => ouch.processSyncActions(docActions))
-    .then(() => ouch.getAllRows())
+    .then(result => {
+      console.log(result.map(x => x[1]));
+      return ouch.getAllRows()
+    })
     .then(allRows => {
       const rows = allRows[1].rows._array;
       expect(rows.find(x => x.doc_id == 'donatello').json).toMatch('"weapon":"pizza-knife"');

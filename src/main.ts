@@ -19,6 +19,10 @@ import {
     AllDocsResponse,
     AllFullDocsRow,
     AllFullDocsResponse,
+    DocSyncState,
+    DocSyncAction,
+    DocSyncTransaction,
+    TxSyncActionSuccess,
     TurtleDoc,
     TurtleFullDocsRow,
     TurtleAllFullDocsResponse,
@@ -28,13 +32,6 @@ import {
 
 type AllDocRowsTuple = [AllDocsRow[], AllDocsRow[]];
 
-type DocSyncState = 'delete' | 'update' | 'add';
-
-interface DocSyncAction {
-    state: DocSyncState;
-    id: string;
-    doc?: TurtleDoc;
-}
 
 
 // interface DocSyncStateCheck {
@@ -47,9 +44,9 @@ export class OuchDB {
     httpClient: HTTPClient;
 
     takeSyncActions = {
-        'delete': (tx, act: DocSyncAction) => this.deleteSyncAction(tx, act.id),
-        'add': (tx, act: DocSyncAction) => this.addSyncAction(tx, act.doc),
-        'update': (tx, act: DocSyncAction) => this.updateSyncAction(tx, act.doc),
+        'delete': (tx, act: DocSyncAction) => this.deleteSyncAction(tx, act),
+        'add': (tx, act: DocSyncAction) => this.addSyncAction(tx, act),
+        'update': (tx, act: DocSyncAction) => this.updateSyncAction(tx, act),
     };
 
     constructor(db: Database, httpClient: HTTPClient) {
@@ -115,7 +112,7 @@ export class OuchDB {
             },[]);
 
     // deletes provided pouchdb doc from "by-sequence" table 
-    deleteRev = (tx, doc: PouchDBRow): Promise<void> =>  new Promise((resolve, reject) => 
+    deleteRev = (tx, doc: PouchDBRow): Promise<void> => new Promise((resolve, reject) => 
         tx.executeSql(
             `DELETE FROM "by-sequence" WHERE
              doc_id = "${doc.doc_id}"
@@ -243,35 +240,37 @@ export class OuchDB {
         return [...changedRows, ...onlyRemoteRows, ...onlyLocalRows];
     }
 
-    updateSyncAction = (tx: SQLTransaction, doc: TurtleDoc): Promise<TxSuccessCallback> => 
+    updateSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) => {
-            const {_id, _rev, ...jsonValue} = doc;
+            const {_id, _rev, ...jsonValue} = action.doc;
+            const {doc, ...response } = action;
             tx.executeSql(
                 `UPDATE "by-sequence" SET json = ?, rev = ?  WHERE doc_id = ?`,
                 [JSON.stringify(jsonValue), doc._rev, doc._id],
-                (tx, res) => resolve([tx, res]),
+                (tx, res) => resolve([tx, {...response, ...{ done:'success'}}]),
                 (tx, err) => reject([tx, err]),
             )
     });
 
-    addSyncAction = (tx: SQLTransaction, doc: TurtleDoc): Promise<TxSuccessCallback> => 
+    addSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) => {
-            const {_id, _rev, ...jsonValue} = doc;
+            const {_id, _rev, ...jsonValue} = action.doc;
+            const {doc, ...response } = action;
             tx.executeSql(
                 `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
                  VALUES (?, ?, ?, ?)`,
                 [JSON.stringify(jsonValue), 0, doc._id, doc._rev],
-                (tx, res) => resolve([tx, res]),
+                (tx, res) => resolve([tx, {...response, ...{ done:'success'}}]),
                 (tx, err) => reject([tx, err]),
             )
     });
 
-    deleteSyncAction = (tx: SQLTransaction, docID: string): Promise<TxSuccessCallback> => 
+    deleteSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) =>
             tx.executeSql(
                 `DELETE FROM "by-sequence" WHERE doc_id = ?`,
-                [docID],
-                (tx, res) => resolve([tx, res]),
+                [action.id],
+                (tx, res) => resolve([tx, {...action, ...{ done:'success'}}]),
                 (tx, err) => reject([tx, err]),
             )
     );
@@ -294,7 +293,7 @@ export class OuchDB {
             : action;
 
     // SOQ/18004296/how-to-bulk-fetch-by-ids-in-couchdb-without-creating-a-view
-    prepareSyncActions = (actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
+    getRemoteDocs4SyncActions = (actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
         this.getAllRemoteDocs()
         .then((res: TurtleAllFullDocsResponse) => {
             const docsMap: TurtleDocMap = res.rows
@@ -308,26 +307,26 @@ export class OuchDB {
             return Promise.resolve(enrichedActions);
         })
 
-    checkDocSyncStatus = (actions: DocSyncAction[]): Boolean => (
-        actions.length > 0 && // are there any actions at all?...
-        // ...and do these actions require another get '_all_docs' request?
+        // test: do actions require another get '_all_docs' request?
+    enrichSyncActionsWithDocs = (actions: DocSyncAction[]): Promise<DocSyncAction[]> => (
         !!actions.find(act => (act.state === 'update' || act.state === 'add'))
+            ? this.getRemoteDocs4SyncActions(actions)
+            : Promise.resolve(actions)
         // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
         // (actions[0].state === 'update' || actions[0].state === 'add') 
     );
 
-    syncActions2DB = (tx: SQLTransaction, actions: DocSyncAction[]): Promise<TxSuccessCallback>[] => 
-        actions.map(action => this.takeSyncActions[action.state](tx, action))
+    syncAction2DB = (tx: SQLTransaction, actions: DocSyncAction[]): Promise<TxSyncActionSuccess>[] => 
+        actions.map(action => this.takeSyncActions[action.state](tx, action));
 
-    processSyncActions = (actions: DocSyncAction[]): Promise<void> =>  {
-        return (
-            this.checkDocSyncStatus(actions)
-                ? this.prepareSyncActions(actions)
-                : Promise.resolve(actions)
-        )
-        .then((enrichedActions: DocSyncAction[]) => 
-            this.getTx().then((tx: SQLTransaction) =>
-                Promise.all(this.syncActions2DB(tx, enrichedActions)))
-        ).then(() => Promise.resolve());
-    }
+    syncAllActions2DB = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> => 
+        this.getTx()
+        .then((tx: SQLTransaction) => Promise.all(this.syncAction2DB(tx, actions)) )
+        // .then(() => Promise.resolve(''))
+
+    processSyncActions = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
+        actions.length == 0            
+            ? Promise.resolve([] as TxSyncActionSuccess[])
+            : this.enrichSyncActionsWithDocs(actions)
+                .then(actions => this.syncAllActions2DB(actions));
 };

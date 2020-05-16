@@ -954,13 +954,13 @@ var OuchDB = function OuchDB(db, httpClient) {
 
   defineProperty(this, "takeSyncActions", {
     'delete': function _delete(tx, act) {
-      return _this.deleteSyncAction(tx, act.id);
+      return _this.deleteSyncAction(tx, act);
     },
     'add': function add(tx, act) {
-      return _this.addSyncAction(tx, act.doc);
+      return _this.addSyncAction(tx, act);
     },
     'update': function update(tx, act) {
-      return _this.updateSyncAction(tx, act.doc);
+      return _this.updateSyncAction(tx, act);
     }
   });
 
@@ -1186,38 +1186,52 @@ var OuchDB = function OuchDB(db, httpClient) {
     return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyRemoteRows), toConsumableArray(onlyLocalRows));
   });
 
-  defineProperty(this, "updateSyncAction", function (tx, doc) {
+  defineProperty(this, "updateSyncAction", function (tx, action) {
     return new Promise(function (resolve, reject) {
-      var _id = doc._id,
-          _rev = doc._rev,
-          jsonValue = objectWithoutProperties(doc, ["_id", "_rev"]);
+      var _action$doc = action.doc,
+          _id = _action$doc._id,
+          _rev = _action$doc._rev,
+          jsonValue = objectWithoutProperties(_action$doc, ["_id", "_rev"]);
+
+      var doc = action.doc,
+          response = objectWithoutProperties(action, ["doc"]);
 
       tx.executeSql("UPDATE \"by-sequence\" SET json = ?, rev = ?  WHERE doc_id = ?", [JSON.stringify(jsonValue), doc._rev, doc._id], function (tx, res) {
-        return resolve([tx, res]);
+        return resolve([tx, _objectSpread(_objectSpread({}, response), {
+          done: 'success'
+        })]);
       }, function (tx, err) {
         return reject([tx, err]);
       });
     });
   });
 
-  defineProperty(this, "addSyncAction", function (tx, doc) {
+  defineProperty(this, "addSyncAction", function (tx, action) {
     return new Promise(function (resolve, reject) {
-      var _id = doc._id,
-          _rev = doc._rev,
-          jsonValue = objectWithoutProperties(doc, ["_id", "_rev"]);
+      var _action$doc2 = action.doc,
+          _id = _action$doc2._id,
+          _rev = _action$doc2._rev,
+          jsonValue = objectWithoutProperties(_action$doc2, ["_id", "_rev"]);
+
+      var doc = action.doc,
+          response = objectWithoutProperties(action, ["doc"]);
 
       tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, doc._id, doc._rev], function (tx, res) {
-        return resolve([tx, res]);
+        return resolve([tx, _objectSpread(_objectSpread({}, response), {
+          done: 'success'
+        })]);
       }, function (tx, err) {
         return reject([tx, err]);
       });
     });
   });
 
-  defineProperty(this, "deleteSyncAction", function (tx, docID) {
+  defineProperty(this, "deleteSyncAction", function (tx, action) {
     return new Promise(function (resolve, reject) {
-      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = ?", [docID], function (tx, res) {
-        return resolve([tx, res]);
+      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = ?", [action.id], function (tx, res) {
+        return resolve([tx, _objectSpread(_objectSpread({}, action), {
+          done: 'success'
+        })]);
       }, function (tx, err) {
         return reject([tx, err]);
       });
@@ -1245,7 +1259,7 @@ var OuchDB = function OuchDB(db, httpClient) {
     }) : action;
   });
 
-  defineProperty(this, "prepareSyncActions", function (actions) {
+  defineProperty(this, "getRemoteDocs4SyncActions", function (actions) {
     return _this.getAllRemoteDocs().then(function (res) {
       var docsMap = res.rows.filter(function (row) {
         return row.id !== '_design/access';
@@ -1257,29 +1271,29 @@ var OuchDB = function OuchDB(db, httpClient) {
     });
   });
 
-  defineProperty(this, "checkDocSyncStatus", function (actions) {
-    return actions.length > 0 && // are there any actions at all?...
-    // ...and do these actions require another get '_all_docs' request?
-    !!actions.find(function (act) {
+  defineProperty(this, "enrichSyncActionsWithDocs", function (actions) {
+    return !!actions.find(function (act) {
       return act.state === 'update' || act.state === 'add';
-    }) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
+    }) ? _this.getRemoteDocs4SyncActions(actions) : Promise.resolve(actions) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
     // (actions[0].state === 'update' || actions[0].state === 'add') 
     ;
   });
 
-  defineProperty(this, "syncActions2DB", function (tx, actions) {
+  defineProperty(this, "syncAction2DB", function (tx, actions) {
     return actions.map(function (action) {
       return _this.takeSyncActions[action.state](tx, action);
     });
   });
 
+  defineProperty(this, "syncAllActions2DB", function (actions) {
+    return _this.getTx().then(function (tx) {
+      return Promise.all(_this.syncAction2DB(tx, actions));
+    });
+  });
+
   defineProperty(this, "processSyncActions", function (actions) {
-    return (_this.checkDocSyncStatus(actions) ? _this.prepareSyncActions(actions) : Promise.resolve(actions)).then(function (enrichedActions) {
-      return _this.getTx().then(function (tx) {
-        return Promise.all(_this.syncActions2DB(tx, enrichedActions));
-      });
-    }).then(function () {
-      return Promise.resolve();
+    return actions.length == 0 ? Promise.resolve([]) : _this.enrichSyncActionsWithDocs(actions).then(function (actions) {
+      return _this.syncAllActions2DB(actions);
     });
   });
 

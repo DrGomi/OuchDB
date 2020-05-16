@@ -75,3 +75,19 @@ AllDocsResponse | AllFullDocsResponse | TurtleAllFullDocsResponse;
 export interface HTTPClient {
     get: (url: string) => Promise<any>;
 }
+
+export type DocSyncState = 'delete' | 'update' | 'add';
+
+export interface DocSyncAction {
+    state: DocSyncState;
+    id: string;
+    doc?: TurtleDoc;
+}
+
+export type actionDone = 'success' | 'error'
+
+export interface DocSyncTransaction {
+    id: string;
+    state: DocSyncState;
+    done: actionDone;
+}
