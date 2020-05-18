@@ -5,7 +5,7 @@ import {
     Database,
     SQLiteCallback,
     // ResultSet,
-    PouchDBRow,
+    // PouchDBRow,
     SQLTransaction,
     SQLResultSet,
     SQLError,
@@ -15,6 +15,7 @@ import {
 } from './SQLite.types';
 
 import { 
+    PouchDBRow,
     AllDocsRow,
     AllDocsResponse,
     AllFullDocsRow,
@@ -52,6 +53,7 @@ export class OuchDB {
     constructor(db: Database, httpClient: HTTPClient) {
         this.db = db;
         this.httpClient = httpClient;
+        // this.initDBtable()
     }
 
     // resolves execution context from db
@@ -65,8 +67,8 @@ export class OuchDB {
 
     // resolves execution context & resultset with all rows from given table
     getAllRows = (): Promise<TxSuccessCallback> => 
-        this.getTx().then(tx => 
-            new Promise((resolve, reject) =>   
+        new Promise((resolve, reject) =>   
+            this.db.transaction(tx => 
                 tx.executeSql(
                     `SELECT * FROM "by-sequence"`, 
                     [], 
@@ -145,7 +147,7 @@ export class OuchDB {
 
     // resolves all table names from db as Array<string> 
     getTables = (): Promise<string[]> => new Promise((resolve, reject)=> 
-        this.getTx().then(tx =>
+        this.db.transaction(tx =>
             tx.executeSql(
                 'SELECT tbl_name from sqlite_master WHERE type = "table"',
                 [],
@@ -321,12 +323,60 @@ export class OuchDB {
 
     syncAllActions2DB = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> => 
         this.getTx()
-        .then((tx: SQLTransaction) => Promise.all(this.syncAction2DB(tx, actions)) )
-        // .then(() => Promise.resolve(''))
+        .then((tx: SQLTransaction) => 
+            Promise.all(this.syncAction2DB(tx, actions)) 
+        )
 
     processSyncActions = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
         actions.length == 0            
             ? Promise.resolve([] as TxSyncActionSuccess[])
             : this.enrichSyncActionsWithDocs(actions)
                 .then(actions => this.syncAllActions2DB(actions));
+
+    load(dump: string): Promise<TxSyncActionSuccess[]> {
+        return this.initDBtable()
+        .then(() => this.getDumpRows(dump))
+        .then((dumpRows: TurtleDoc[]) => this.insertDumpRows(dumpRows))
+    }
+    // checks if dump string contains dump or just a url to dump file...
+    getDumpRows = (dump : string): Promise<TurtleDoc[]> => {
+        const dumps = dump.split('\n');
+        return (dumps.length === 3)
+            ? Promise.resolve(JSON.parse(dumps[1])['docs'])
+            : this.httpClient.get(dump).then(res => this.getDumpRows(res));
+    }
+
+    insertDumpRows = (rows: TurtleDoc[]): Promise<TxSyncActionSuccess[]> =>
+        this.getTx().then(tx => {
+            const addActions = rows.map(this.convertDoc2Action)
+                                .map(row => this.addSyncAction(tx, row));
+            return Promise.all(addActions);
+        })
+
+    convertDoc2Action= (doc: TurtleDoc): DocSyncAction => 
+        ({ 
+            state: 'add',
+            id: doc._id,
+            doc: doc
+        });
+
+
+    initDBtable = (): Promise<void> =>
+        new Promise((resolve, reject) => 
+            this.db.transaction(tx =>  
+                tx.executeSql(
+                    `CREATE TABLE IF NOT EXISTS "by-sequence" (
+                        seq INTEGER PRIMARY KEY,
+                        json TEXT,
+                        deleted INT,
+                        doc_id TEXT unique,
+                        rev TEXT
+                    )`,
+                    [],
+                    (tx, res) => resolve(),
+                    (tx, err) => reject(err)
+                )
+            )
+        );
+    
 };

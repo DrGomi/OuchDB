@@ -190,7 +190,7 @@ it('requests all_docs from remote endpoint', () => {
       return ouch.processSyncActions(docActions);
     })
     .then(result => {
-      console.log(result.map(x => x[1]));
+      // console.log(result.map(x => x[1]));
       return ouch.getAllRows()
     })
     .then(allRows => {
@@ -220,10 +220,11 @@ it('requests all_docs from remote endpoint', () => {
     })
     .then(actions => ouch.processSyncActions(actions))
     .then(result => {
-      console.log(result.map(x => x[1]));
+      // console.log(result.map(x => x[1]));
       return ouch.getAllRows()
     })
     .then(allRows => {
+      // console.log(allRows[1].rows._array);
       const rows = allRows[1].rows._array;
       expect(rows.find(x => x.doc_id == 'donatello').json).toMatch('"weapon":"bo"');
       expect(rows.find(x => x.doc_id == 'michelangelo').json).toMatch('"weapon":"nunchaku"');

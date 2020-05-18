@@ -917,6 +917,24 @@ function _classCallCheck(instance, Constructor) {
 
 var classCallCheck = _classCallCheck;
 
+function _defineProperties(target, props) {
+  for (var i = 0; i < props.length; i++) {
+    var descriptor = props[i];
+    descriptor.enumerable = descriptor.enumerable || false;
+    descriptor.configurable = true;
+    if ("value" in descriptor) descriptor.writable = true;
+    Object.defineProperty(target, descriptor.key, descriptor);
+  }
+}
+
+function _createClass(Constructor, protoProps, staticProps) {
+  if (protoProps) _defineProperties(Constructor.prototype, protoProps);
+  if (staticProps) _defineProperties(Constructor, staticProps);
+  return Constructor;
+}
+
+var createClass = _createClass;
+
 function _defineProperty(obj, key, value) {
   if (key in obj) {
     Object.defineProperty(obj, key, {
@@ -943,364 +961,418 @@ function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { va
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
 // }
-var OuchDB = function OuchDB(db, httpClient) {
-  var _this = this;
+var OuchDB = /*#__PURE__*/function () {
+  function OuchDB(db, httpClient) {
+    var _this = this;
 
-  classCallCheck(this, OuchDB);
+    classCallCheck(this, OuchDB);
 
-  defineProperty(this, "db", void 0);
+    defineProperty(this, "db", void 0);
 
-  defineProperty(this, "httpClient", void 0);
+    defineProperty(this, "httpClient", void 0);
 
-  defineProperty(this, "takeSyncActions", {
-    'delete': function _delete(tx, act) {
-      return _this.deleteSyncAction(tx, act);
-    },
-    'add': function add(tx, act) {
-      return _this.addSyncAction(tx, act);
-    },
-    'update': function update(tx, act) {
-      return _this.updateSyncAction(tx, act);
-    }
-  });
-
-  defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
-    return regenerator.wrap(function _callee$(_context) {
-      while (1) {
-        switch (_context.prev = _context.next) {
-          case 0:
-            return _context.abrupt("return", new Promise(function (resolve, reject) {
-              return _this.db.transaction(function (tx) {
-                return resolve(tx);
-              }, function (err) {
-                return reject(err);
-              });
-            }));
-
-          case 1:
-          case "end":
-            return _context.stop();
-        }
+    defineProperty(this, "takeSyncActions", {
+      'delete': function _delete(tx, act) {
+        return _this.deleteSyncAction(tx, act);
+      },
+      'add': function add(tx, act) {
+        return _this.addSyncAction(tx, act);
+      },
+      'update': function update(tx, act) {
+        return _this.updateSyncAction(tx, act);
       }
-    }, _callee);
-  })));
+    });
 
-  defineProperty(this, "getAllRows", function () {
-    return _this.getTx().then(function (tx) {
+    defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
+      return regenerator.wrap(function _callee$(_context) {
+        while (1) {
+          switch (_context.prev = _context.next) {
+            case 0:
+              return _context.abrupt("return", new Promise(function (resolve, reject) {
+                return _this.db.transaction(function (tx) {
+                  return resolve(tx);
+                }, function (err) {
+                  return reject(err);
+                });
+              }));
+
+            case 1:
+            case "end":
+              return _context.stop();
+          }
+        }
+      }, _callee);
+    })));
+
+    defineProperty(this, "getAllRows", function () {
       return new Promise(function (resolve, reject) {
-        return tx.executeSql("SELECT * FROM \"by-sequence\"", [], function (tx, res) {
-          return resolve([tx, res]);
-        }, function (tx, err) {
-          return reject([tx, err]);
+        return _this.db.transaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\"", [], function (tx, res) {
+            return resolve([tx, res]);
+          }, function (tx, err) {
+            return reject([tx, err]);
+          });
         });
       });
     });
-  });
 
-  defineProperty(this, "mapDocRows", function (res) {
-    return Object.keys(res.rows).map(function (_) {
-      return res.rows[_];
-    })[0];
-  });
-
-  defineProperty(this, "getRevInt", function (inRev) {
-    return parseInt(inRev.split('-')[0]);
-  });
-
-  defineProperty(this, "compareLocalDocs", function (left, right) {
-    return left.doc_id !== right.doc_id ? true // : left == right ||
-    : _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
-  });
-
-  defineProperty(this, "compareSyncDocs", function (left, right) {
-    return left.id !== right.id ? true : _this.getRevInt(left.value.rev) > _this.getRevInt(right.value.rev);
-  });
-
-  defineProperty(this, "check4SameID", function (docs, checkDoc) {
-    return !!docs.find(function (doc) {
-      return doc.doc_id === checkDoc.doc_id;
+    defineProperty(this, "mapDocRows", function (res) {
+      return Object.keys(res.rows).map(function (_) {
+        return res.rows[_];
+      })[0];
     });
-  });
 
-  defineProperty(this, "filterOldLocalRevs", function (origSeq) {
-    return origSeq.reduce(function (acc, iter) {
-      // try to filter out docs (with same id & lower revision) ...
-      var filterRows = acc.filter(function (x) {
-        return _this.compareLocalDocs(x, iter);
-      }); // ...check if doc with same id is still present in filtered rows...
+    defineProperty(this, "getRevInt", function (inRev) {
+      return parseInt(inRev.split('-')[0]);
+    });
 
-      return _this.check4SameID(filterRows, iter) ? filterRows // this doc's rev id higher 
-      : [].concat(toConsumableArray(filterRows), [iter]); // OR: add the iter doc to list
-    }, []);
-  });
+    defineProperty(this, "compareLocalDocs", function (left, right) {
+      return left.doc_id !== right.doc_id ? true // : left == right ||
+      : _this.getRevInt(left.rev) > _this.getRevInt(right.rev);
+    });
 
-  defineProperty(this, "deleteRev", function (tx, doc) {
-    return new Promise(function (resolve, reject) {
-      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE\n             doc_id = \"".concat(doc.doc_id, "\"\n             AND rev = \"").concat(doc.rev, "\""), [], function () {
-        return resolve();
-      }, function (err) {
-        return reject(err);
+    defineProperty(this, "compareSyncDocs", function (left, right) {
+      return left.id !== right.id ? true : _this.getRevInt(left.value.rev) > _this.getRevInt(right.value.rev);
+    });
+
+    defineProperty(this, "check4SameID", function (docs, checkDoc) {
+      return !!docs.find(function (doc) {
+        return doc.doc_id === checkDoc.doc_id;
       });
     });
-  });
 
-  defineProperty(this, "killOldRevs", function (origSeq, filterSeq) {
-    return _this.getTx().then(function (tx) {
-      return Promise.all(origSeq // only delete docs exclusive to origSeq
-      .filter(function (x) {
-        return !filterSeq.includes(x);
-      }).map(function (x) {
-        return _this.deleteRev(tx, x);
-      }));
-    });
-  });
+    defineProperty(this, "filterOldLocalRevs", function (origSeq) {
+      return origSeq.reduce(function (acc, iter) {
+        // try to filter out docs (with same id & lower revision) ...
+        var filterRows = acc.filter(function (x) {
+          return _this.compareLocalDocs(x, iter);
+        }); // ...check if doc with same id is still present in filtered rows...
 
-  defineProperty(this, "pruneOldLocalRevs", function () {
-    return _this.getAllRows().then(function (txNrs) {
-      var _txNrs = slicedToArray(txNrs, 2),
-          _ = _txNrs[0],
-          res = _txNrs[1];
-
-      var origSeq = _this.mapDocRows(res);
-
-      var filterSeq = _this.filterOldLocalRevs(origSeq);
-
-      return _this.killOldRevs(origSeq, filterSeq);
-    });
-  });
-
-  defineProperty(this, "getTables", function () {
-    return new Promise(function (resolve, reject) {
-      return _this.getTx().then(function (tx) {
-        return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (tx, res) {
-          return resolve([tx, res]);
-        }, function (tx, err) {
-          return reject([tx, err]);
-        });
-      });
-    }).then(function (txCb) {
-      var _txCb = slicedToArray(txCb, 2),
-          _ = _txCb[0],
-          res = _txCb[1];
-
-      var tables = res['rows']['_array'].map(function (y) {
-        return y['tbl_name'];
-      });
-      return Promise.resolve(tables);
-    });
-  });
-
-  defineProperty(this, "drobTable", function (tx, tableName) {
-    return new Promise(function (resolve, reject) {
-      return tx.executeSql("DROP TABLE \"".concat(tableName, "\""), [], function (tx, res) {
-        return resolve([tx, res]);
-      }, function (tx, err) {
-        return reject([tx, err]);
-      });
-    });
-  });
-
-  defineProperty(this, "dropFunnyTables", function () {
-    return _this.getTx().then(function (tx) {
-      return Promise.all(['attach-store', 'local-store', 'attach-seq-store', 'document-store', 'metadata-store'].map(function (x) {
-        return _this.drobTable(tx, x);
-      }));
-    });
-  });
-
-  defineProperty(this, "getLocalAllDocs", function () {
-    return _this.getAllRows().then(function (txNrs) {
-      var _txNrs2 = slicedToArray(txNrs, 2),
-          _ = _txNrs2[0],
-          res = _txNrs2[1];
-
-      var rows = _this.mapDocRows(res);
-
-      var allDocs = {
-        total_rows: rows.length,
-        offset: 0,
-        rows: rows.map(function (doc) {
-          return {
-            id: doc.doc_id,
-            key: doc.doc_id,
-            value: {
-              rev: doc.rev
-            }
-          };
-        })
-      };
-      return Promise.resolve(allDocs);
-    });
-  });
-
-  defineProperty(this, "getCleanAllDocRows", function (rawResponse) {
-    return rawResponse.rows.filter(function (row) {
-      return row.id !== "_design/access";
-    });
-  });
-
-  defineProperty(this, "sameIdNHigherRev", function (localDoc) {
-    return function (remoteDoc) {
-      return localDoc.id === remoteDoc.id && _this.getRevInt(localDoc.value.rev) < _this.getRevInt(remoteDoc.value.rev);
-    };
-  });
-
-  defineProperty(this, "map2SyncAction", function (syncState) {
-    return function (doc) {
-      return {
-        state: syncState,
-        id: doc.id
-      };
-    };
-  });
-
-  defineProperty(this, "getChangedDocs", function (leftRows, rightRows) {
-    return leftRows.filter(function (leftDoc) {
-      return !!rightRows.find(_this.sameIdNHigherRev(leftDoc));
-    }).map(_this.map2SyncAction('update'));
-  });
-
-  defineProperty(this, "getExclusiveDocs", function (leftRows, rightRows, syncState) {
-    return leftRows.filter(function (lDoc) {
-      return !rightRows.find(function (rDoc) {
-        return lDoc.id === rDoc.id;
-      });
-    }).map(_this.map2SyncAction(syncState));
-  });
-
-  defineProperty(this, "compareWithRemote", function (localNremoteDocs) {
-    // destructure all_docs-rows tuple
-    var _localNremoteDocs = slicedToArray(localNremoteDocs, 2),
-        localDocs = _localNremoteDocs[0],
-        remoteDocs = _localNremoteDocs[1]; // changed docs need to be converted to 'update' actions
-
-
-    var changedRows = _this.getChangedDocs(localDocs, remoteDocs); // docs exclusive to remote response need to be added to db
-
-
-    var onlyRemoteRows = _this.getExclusiveDocs(remoteDocs, localDocs, 'add'); // docs exclusive present in local db need to be deleted from db
-
-
-    var onlyLocalRows = _this.getExclusiveDocs(localDocs, remoteDocs, 'delete');
-
-    return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyRemoteRows), toConsumableArray(onlyLocalRows));
-  });
-
-  defineProperty(this, "updateSyncAction", function (tx, action) {
-    return new Promise(function (resolve, reject) {
-      var _action$doc = action.doc,
-          _id = _action$doc._id,
-          _rev = _action$doc._rev,
-          jsonValue = objectWithoutProperties(_action$doc, ["_id", "_rev"]);
-
-      var doc = action.doc,
-          response = objectWithoutProperties(action, ["doc"]);
-
-      tx.executeSql("UPDATE \"by-sequence\" SET json = ?, rev = ?  WHERE doc_id = ?", [JSON.stringify(jsonValue), doc._rev, doc._id], function (tx, res) {
-        return resolve([tx, _objectSpread(_objectSpread({}, response), {
-          done: 'success'
-        })]);
-      }, function (tx, err) {
-        return reject([tx, err]);
-      });
-    });
-  });
-
-  defineProperty(this, "addSyncAction", function (tx, action) {
-    return new Promise(function (resolve, reject) {
-      var _action$doc2 = action.doc,
-          _id = _action$doc2._id,
-          _rev = _action$doc2._rev,
-          jsonValue = objectWithoutProperties(_action$doc2, ["_id", "_rev"]);
-
-      var doc = action.doc,
-          response = objectWithoutProperties(action, ["doc"]);
-
-      tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, doc._id, doc._rev], function (tx, res) {
-        return resolve([tx, _objectSpread(_objectSpread({}, response), {
-          done: 'success'
-        })]);
-      }, function (tx, err) {
-        return reject([tx, err]);
-      });
-    });
-  });
-
-  defineProperty(this, "deleteSyncAction", function (tx, action) {
-    return new Promise(function (resolve, reject) {
-      return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = ?", [action.id], function (tx, res) {
-        return resolve([tx, _objectSpread(_objectSpread({}, action), {
-          done: 'success'
-        })]);
-      }, function (tx, err) {
-        return reject([tx, err]);
-      });
-    });
-  });
-
-  defineProperty(this, "getRemoteDoc", function (docID) {
-    return _this.httpClient.get("http://127.0.0.1:3000/".concat(docID));
-  });
-
-  defineProperty(this, "getAllRemoteDocs", function () {
-    return (// need to change the endpoint
-      _this.httpClient.get("http://127.0.0.1:3000/_all_docs?include_docs=true")
-    );
-  });
-
-  defineProperty(this, "convertDoc2Map", function (acc, row) {
-    acc[row.id] = row.doc;
-    return acc;
-  });
-
-  defineProperty(this, "enrichDocSyncAction", function (action, docsMap) {
-    return action.state !== 'delete' ? _objectSpread(_objectSpread({}, action), {
-      doc: docsMap[action.id]
-    }) : action;
-  });
-
-  defineProperty(this, "getRemoteDocs4SyncActions", function (actions) {
-    return _this.getAllRemoteDocs().then(function (res) {
-      var docsMap = res.rows.filter(function (row) {
-        return row.id !== '_design/access';
-      }).reduce(_this.convertDoc2Map, {});
-      var enrichedActions = actions.reduce(function (acc, action) {
-        return [].concat(toConsumableArray(acc), [_this.enrichDocSyncAction(action, docsMap)]);
+        return _this.check4SameID(filterRows, iter) ? filterRows // this doc's rev id higher 
+        : [].concat(toConsumableArray(filterRows), [iter]); // OR: add the iter doc to list
       }, []);
-      return Promise.resolve(enrichedActions);
     });
-  });
 
-  defineProperty(this, "enrichSyncActionsWithDocs", function (actions) {
-    return !!actions.find(function (act) {
-      return act.state === 'update' || act.state === 'add';
-    }) ? _this.getRemoteDocs4SyncActions(actions) : Promise.resolve(actions) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
-    // (actions[0].state === 'update' || actions[0].state === 'add') 
-    ;
-  });
-
-  defineProperty(this, "syncAction2DB", function (tx, actions) {
-    return actions.map(function (action) {
-      return _this.takeSyncActions[action.state](tx, action);
+    defineProperty(this, "deleteRev", function (tx, doc) {
+      return new Promise(function (resolve, reject) {
+        return tx.executeSql("DELETE FROM \"by-sequence\" WHERE\n             doc_id = \"".concat(doc.doc_id, "\"\n             AND rev = \"").concat(doc.rev, "\""), [], function () {
+          return resolve();
+        }, function (err) {
+          return reject(err);
+        });
+      });
     });
-  });
 
-  defineProperty(this, "syncAllActions2DB", function (actions) {
-    return _this.getTx().then(function (tx) {
-      return Promise.all(_this.syncAction2DB(tx, actions));
+    defineProperty(this, "killOldRevs", function (origSeq, filterSeq) {
+      return _this.getTx().then(function (tx) {
+        return Promise.all(origSeq // only delete docs exclusive to origSeq
+        .filter(function (x) {
+          return !filterSeq.includes(x);
+        }).map(function (x) {
+          return _this.deleteRev(tx, x);
+        }));
+      });
     });
-  });
 
-  defineProperty(this, "processSyncActions", function (actions) {
-    return actions.length == 0 ? Promise.resolve([]) : _this.enrichSyncActionsWithDocs(actions).then(function (actions) {
-      return _this.syncAllActions2DB(actions);
+    defineProperty(this, "pruneOldLocalRevs", function () {
+      return _this.getAllRows().then(function (txNrs) {
+        var _txNrs = slicedToArray(txNrs, 2),
+            _ = _txNrs[0],
+            res = _txNrs[1];
+
+        var origSeq = _this.mapDocRows(res);
+
+        var filterSeq = _this.filterOldLocalRevs(origSeq);
+
+        return _this.killOldRevs(origSeq, filterSeq);
+      });
     });
-  });
 
-  this.db = db;
-  this.httpClient = httpClient;
-} // resolves execution context from db
-;
+    defineProperty(this, "getTables", function () {
+      return new Promise(function (resolve, reject) {
+        return _this.db.transaction(function (tx) {
+          return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (tx, res) {
+            return resolve([tx, res]);
+          }, function (tx, err) {
+            return reject([tx, err]);
+          });
+        });
+      }).then(function (txCb) {
+        var _txCb = slicedToArray(txCb, 2),
+            _ = _txCb[0],
+            res = _txCb[1];
+
+        var tables = res['rows']['_array'].map(function (y) {
+          return y['tbl_name'];
+        });
+        return Promise.resolve(tables);
+      });
+    });
+
+    defineProperty(this, "drobTable", function (tx, tableName) {
+      return new Promise(function (resolve, reject) {
+        return tx.executeSql("DROP TABLE \"".concat(tableName, "\""), [], function (tx, res) {
+          return resolve([tx, res]);
+        }, function (tx, err) {
+          return reject([tx, err]);
+        });
+      });
+    });
+
+    defineProperty(this, "dropFunnyTables", function () {
+      return _this.getTx().then(function (tx) {
+        return Promise.all(['attach-store', 'local-store', 'attach-seq-store', 'document-store', 'metadata-store'].map(function (x) {
+          return _this.drobTable(tx, x);
+        }));
+      });
+    });
+
+    defineProperty(this, "getLocalAllDocs", function () {
+      return _this.getAllRows().then(function (txNrs) {
+        var _txNrs2 = slicedToArray(txNrs, 2),
+            _ = _txNrs2[0],
+            res = _txNrs2[1];
+
+        var rows = _this.mapDocRows(res);
+
+        var allDocs = {
+          total_rows: rows.length,
+          offset: 0,
+          rows: rows.map(function (doc) {
+            return {
+              id: doc.doc_id,
+              key: doc.doc_id,
+              value: {
+                rev: doc.rev
+              }
+            };
+          })
+        };
+        return Promise.resolve(allDocs);
+      });
+    });
+
+    defineProperty(this, "getCleanAllDocRows", function (rawResponse) {
+      return rawResponse.rows.filter(function (row) {
+        return row.id !== "_design/access";
+      });
+    });
+
+    defineProperty(this, "sameIdNHigherRev", function (localDoc) {
+      return function (remoteDoc) {
+        return localDoc.id === remoteDoc.id && _this.getRevInt(localDoc.value.rev) < _this.getRevInt(remoteDoc.value.rev);
+      };
+    });
+
+    defineProperty(this, "map2SyncAction", function (syncState) {
+      return function (doc) {
+        return {
+          state: syncState,
+          id: doc.id
+        };
+      };
+    });
+
+    defineProperty(this, "getChangedDocs", function (leftRows, rightRows) {
+      return leftRows.filter(function (leftDoc) {
+        return !!rightRows.find(_this.sameIdNHigherRev(leftDoc));
+      }).map(_this.map2SyncAction('update'));
+    });
+
+    defineProperty(this, "getExclusiveDocs", function (leftRows, rightRows, syncState) {
+      return leftRows.filter(function (lDoc) {
+        return !rightRows.find(function (rDoc) {
+          return lDoc.id === rDoc.id;
+        });
+      }).map(_this.map2SyncAction(syncState));
+    });
+
+    defineProperty(this, "compareWithRemote", function (localNremoteDocs) {
+      // destructure all_docs-rows tuple
+      var _localNremoteDocs = slicedToArray(localNremoteDocs, 2),
+          localDocs = _localNremoteDocs[0],
+          remoteDocs = _localNremoteDocs[1]; // changed docs need to be converted to 'update' actions
+
+
+      var changedRows = _this.getChangedDocs(localDocs, remoteDocs); // docs exclusive to remote response need to be added to db
+
+
+      var onlyRemoteRows = _this.getExclusiveDocs(remoteDocs, localDocs, 'add'); // docs exclusive present in local db need to be deleted from db
+
+
+      var onlyLocalRows = _this.getExclusiveDocs(localDocs, remoteDocs, 'delete');
+
+      return [].concat(toConsumableArray(changedRows), toConsumableArray(onlyRemoteRows), toConsumableArray(onlyLocalRows));
+    });
+
+    defineProperty(this, "updateSyncAction", function (tx, action) {
+      return new Promise(function (resolve, reject) {
+        var _action$doc = action.doc,
+            _id = _action$doc._id,
+            _rev = _action$doc._rev,
+            jsonValue = objectWithoutProperties(_action$doc, ["_id", "_rev"]);
+
+        var doc = action.doc,
+            response = objectWithoutProperties(action, ["doc"]);
+
+        tx.executeSql("UPDATE \"by-sequence\" SET json = ?, rev = ?  WHERE doc_id = ?", [JSON.stringify(jsonValue), doc._rev, doc._id], function (tx, res) {
+          return resolve([tx, _objectSpread(_objectSpread({}, response), {
+            done: 'success'
+          })]);
+        }, function (tx, err) {
+          return reject([tx, err]);
+        });
+      });
+    });
+
+    defineProperty(this, "addSyncAction", function (tx, action) {
+      return new Promise(function (resolve, reject) {
+        var _action$doc2 = action.doc,
+            _id = _action$doc2._id,
+            _rev = _action$doc2._rev,
+            jsonValue = objectWithoutProperties(_action$doc2, ["_id", "_rev"]);
+
+        var doc = action.doc,
+            response = objectWithoutProperties(action, ["doc"]);
+
+        tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, doc._id, doc._rev], function (tx, res) {
+          return resolve([tx, _objectSpread(_objectSpread({}, response), {
+            done: 'success'
+          })]);
+        }, function (tx, err) {
+          return reject([tx, err]);
+        });
+      });
+    });
+
+    defineProperty(this, "deleteSyncAction", function (tx, action) {
+      return new Promise(function (resolve, reject) {
+        return tx.executeSql("DELETE FROM \"by-sequence\" WHERE doc_id = ?", [action.id], function (tx, res) {
+          return resolve([tx, _objectSpread(_objectSpread({}, action), {
+            done: 'success'
+          })]);
+        }, function (tx, err) {
+          return reject([tx, err]);
+        });
+      });
+    });
+
+    defineProperty(this, "getRemoteDoc", function (docID) {
+      return _this.httpClient.get("http://127.0.0.1:3000/".concat(docID));
+    });
+
+    defineProperty(this, "getAllRemoteDocs", function () {
+      return (// need to change the endpoint
+        _this.httpClient.get("http://127.0.0.1:3000/_all_docs?include_docs=true")
+      );
+    });
+
+    defineProperty(this, "convertDoc2Map", function (acc, row) {
+      acc[row.id] = row.doc;
+      return acc;
+    });
+
+    defineProperty(this, "enrichDocSyncAction", function (action, docsMap) {
+      return action.state !== 'delete' ? _objectSpread(_objectSpread({}, action), {
+        doc: docsMap[action.id]
+      }) : action;
+    });
+
+    defineProperty(this, "getRemoteDocs4SyncActions", function (actions) {
+      return _this.getAllRemoteDocs().then(function (res) {
+        var docsMap = res.rows.filter(function (row) {
+          return row.id !== '_design/access';
+        }).reduce(_this.convertDoc2Map, {});
+        var enrichedActions = actions.reduce(function (acc, action) {
+          return [].concat(toConsumableArray(acc), [_this.enrichDocSyncAction(action, docsMap)]);
+        }, []);
+        return Promise.resolve(enrichedActions);
+      });
+    });
+
+    defineProperty(this, "enrichSyncActionsWithDocs", function (actions) {
+      return !!actions.find(function (act) {
+        return act.state === 'update' || act.state === 'add';
+      }) ? _this.getRemoteDocs4SyncActions(actions) : Promise.resolve(actions) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
+      // (actions[0].state === 'update' || actions[0].state === 'add') 
+      ;
+    });
+
+    defineProperty(this, "syncAction2DB", function (tx, actions) {
+      return actions.map(function (action) {
+        return _this.takeSyncActions[action.state](tx, action);
+      });
+    });
+
+    defineProperty(this, "syncAllActions2DB", function (actions) {
+      return _this.getTx().then(function (tx) {
+        return Promise.all(_this.syncAction2DB(tx, actions));
+      });
+    });
+
+    defineProperty(this, "processSyncActions", function (actions) {
+      return actions.length == 0 ? Promise.resolve([]) : _this.enrichSyncActionsWithDocs(actions).then(function (actions) {
+        return _this.syncAllActions2DB(actions);
+      });
+    });
+
+    defineProperty(this, "getDumpRows", function (dump) {
+      var dumps = dump.split('\n');
+      return dumps.length === 3 ? Promise.resolve(JSON.parse(dumps[1])['docs']) : _this.httpClient.get(dump).then(function (res) {
+        return _this.getDumpRows(res);
+      });
+    });
+
+    defineProperty(this, "insertDumpRows", function (rows) {
+      return _this.getTx().then(function (tx) {
+        var addActions = rows.map(_this.convertDoc2Action).map(function (row) {
+          return _this.addSyncAction(tx, row);
+        });
+        return Promise.all(addActions);
+      });
+    });
+
+    defineProperty(this, "convertDoc2Action", function (doc) {
+      return {
+        state: 'add',
+        id: doc._id,
+        doc: doc
+      };
+    });
+
+    defineProperty(this, "initDBtable", function () {
+      return new Promise(function (resolve, reject) {
+        return _this.db.transaction(function (tx) {
+          return tx.executeSql("CREATE TABLE IF NOT EXISTS \"by-sequence\" (\n                        seq INTEGER PRIMARY KEY,\n                        json TEXT,\n                        deleted INT,\n                        doc_id TEXT unique,\n                        rev TEXT\n                    )", [], function (tx, res) {
+            return resolve();
+          }, function (tx, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
+    this.db = db;
+    this.httpClient = httpClient; // this.initDBtable()
+  } // resolves execution context from db
+
+
+  createClass(OuchDB, [{
+    key: "load",
+    value: function load(dump) {
+      var _this2 = this;
+
+      return this.initDBtable().then(function () {
+        return _this2.getDumpRows(dump);
+      }).then(function (dumpRows) {
+        return _this2.insertDumpRows(dumpRows);
+      });
+    } // checks if dump string contains dump or just a url to dump file...
+
+  }]);
+
+  return OuchDB;
+}();
 
 exports.OuchDB = OuchDB;
 //# sourceMappingURL=main.js.map

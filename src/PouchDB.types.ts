@@ -5,10 +5,8 @@ export interface PouchDBRow extends ResultSetRow {
     doc_id: string;
     json: string;
     rev: string;
-    seq: number;
+    seq?: number;
 }
-
-
 
 interface AllDocsRev {
     rev: string;
