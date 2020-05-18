@@ -6,6 +6,9 @@ PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 const fs = require('fs');
 const fetch = require("node-fetch");
 
+const mockCouchDB = require('../resources/test_server')['couch'];
+mockCouchDB.listen(3000, '127.0.0.1');
+
 const caller = { 
     get: url => new Promise((resolve, reject) => 
         fetch(url)
@@ -30,32 +33,49 @@ const allRemoteDocs = {
     ]
 };
 
+const sqliteNames = [
+  'turtles_sync_1',
+  'turtles_sync_2',
+  'turtles_sync_3',
+  'turtles_sync_4',
+  'turtles_sync_5',
+  'turtles_sync_6',
+  'turtles_sync_7',
+  'turtles_sync_8'
+];
 
-const sqliteName = 'turtles_2'
-const pouch = new PouchDB(sqliteName, {adapter: 'websql'});
-const updateWeapon = (name, arm) =>
-  pouch.get(name).then(itm => pouch.put({...itm, ...{ weapon: arm }}));
-
-const webSQLDB = openDatabase(sqliteName, '1', 'pouch turtles', 1);
-
-const ouch = new OuchDB(webSQLDB, caller);
-
-beforeAll(() => pouch.load(dump));
-
-afterAll(() => fs.unlinkSync(sqliteName) )
+const dbSetup = (index) => {
+  const pouch = new PouchDB(sqliteNames[index], {adapter: 'websql'});
+  const webSQLDB = openDatabase(sqliteNames[index], '1', 'blah', 1);
+  const ouch = new OuchDB(webSQLDB, caller);
+  return [ pouch, ouch ];
+}
 
 
-it('creates successfully PouchDB & OuchDB', () => {
-    expect.assertions(2);
-    
-    expect(pouch).toBeDefined();
-    return expect(ouch).toBeDefined();
-  });
+
+// beforeEach(() => {
+//   pouch.destroy()
+//   .catch(() => pouch.load())
+//   .then(() => {
+//     pouch = new PouchDB(sqliteName, {adapter: 'websql'});
+//     pouch.load(dump)
+//   }
+
+//   )
+// });
+
+afterAll(() =>  {
+  mockCouchDB.close();
+  sqliteNames.forEach(db => fs.unlinkSync(db));
+})
+
+
 
 it('transforms local db rows into CouchDB compatible _all_docs format', () => {
     expect.assertions(4);
-
-    return ouch.getLocalAllDocs()
+    const [ pouch, ouch ] = dbSetup(0);
+    return pouch.load(dump)
+    .then(() => ouch.getLocalAllDocs())
     .then(allDocs => {
         const allDocsKeys = Object.keys(allDocs);
         expect(allDocsKeys).toContain('total_rows');
@@ -68,14 +88,14 @@ it('transforms local db rows into CouchDB compatible _all_docs format', () => {
 it('maps _all_docs format to rows containing only docs', () => {
     expect.assertions(3);
 
-    return Promise.resolve(allRemoteDocs)
-    .then(allDocsResponse => {
-        expect(allDocsResponse === Object(allDocsResponse)).toBeTruthy()
-        const cleanDocs = ouch.getCleanAllDocRows(allDocsResponse);
+    const [ pouch, ouch ] = dbSetup(1);
+    return pouch.load(dump)
+    .then(() => {
+        expect(allRemoteDocs === Object(allRemoteDocs)).toBeTruthy()
+        const cleanDocs = ouch.getCleanAllDocRows(allRemoteDocs);
         expect(Array.isArray(cleanDocs)).toBeTruthy()
         const docIds = cleanDocs.map(x => x.id);
         expect(docIds).not.toContain("_design/access");
-
     })
   });
 
@@ -83,10 +103,13 @@ it('maps _all_docs format to rows containing only docs', () => {
 it('compares local with remote docs & returns list with sync actions', () => {
     expect.assertions(6);
 
-    return Promise.all([
+    const [ pouch, ouch ] = dbSetup(2);
+    return pouch.load(dump)
+    .then(() => Promise.all([
         ouch.getLocalAllDocs(),
         Promise.resolve(allRemoteDocs)
-    ])
+      ])
+    )
     .then(allDBDocs => {
         const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows);
         const docDiff = ouch.compareWithRemote(onlyRows);
@@ -103,7 +126,9 @@ it('compares local with remote docs & returns list with sync actions', () => {
 it('requests doc from remote endpoint', () => {
     expect.assertions(2);
 
-    return ouch.getRemoteDoc('splinter')
+    const [ pouch, ouch ] = dbSetup(3);
+    return pouch.load(dump)
+    .then(() => ouch.getRemoteDoc('splinter'))
     .then(res => expect(res._id).toMatch('splinter'))
     .then(() =>
         expect(ouch.getRemoteDoc('mickey'))
@@ -113,7 +138,9 @@ it('requests doc from remote endpoint', () => {
 
 it('requests all_docs from remote endpoint', () => {
     expect.assertions(1);
-    return ouch.getAllRemoteDocs()
+    const [ pouch, ouch ] = dbSetup(4);
+    return pouch.load(dump)
+    .then(() =>  ouch.getAllRemoteDocs())
     .then(res => {
       const remoteRows = res.rows.filter(row => row.id !== '_design/access');
       expect(remoteRows.length).toBe(4);
@@ -128,7 +155,10 @@ it('requests all_docs from remote endpoint', () => {
       { state: 'add', id: 'splinter' },
       { state: 'delete', id: 'raphael' }
     ];
-    return ouch.getRemoteDocs4SyncActions(docActions)
+
+    const [ pouch, ouch ] = dbSetup(5);
+    return pouch.load(dump)
+    .then(() => ouch.getRemoteDocs4SyncActions(docActions))
     .then(eActions =>  {
       expect(eActions.length).toBe(4);
       expect(eActions.find(x => x.id == 'donatello').doc).toBeDefined()
@@ -141,21 +171,24 @@ it('requests all_docs from remote endpoint', () => {
   it('applies given doc sync actions to local db', () => {
     expect.assertions(8);
 
-    const docActions =       [
+    const docActions = [
       { state: 'update', id: 'donatello', doc: { name: 'Donatello', weapon: 'pizza-knife', bandana: 'purple', _id: 'donatello', _rev: '5-b587bb2575475e3e50c7807c404d4d49' } },
       { state: 'update', id: 'michelangelo', doc: { name: 'Michelangelo', weapon: 'bar', bandana: 'orange', _id: 'michelangelo', _rev: '3-c4902caddb145cfb9ec444d49a12d7cf' } },
       { state: 'add', id: 'splinter', doc: { name: 'Splinter', weapon: 'stick', bandana: 'brown', _id: 'splinter', _rev: '1-g2b746e11c7f4011483289337ca2dfe3' } },
       { state: 'delete', id: 'raphael' }
     ]
-    return ouch.getAllRows()
+    const [ pouch, ouch ] = dbSetup(6);
+    return pouch.load(dump)
+    .then(() => ouch.getAllRows())
     .then(allRows => {
       const rows = allRows[1].rows._array;
       expect(rows.find(x => x.doc_id == 'donatello').json).toMatch('"weapon":"bo"');
       expect(rows.find(x => x.doc_id == 'michelangelo').json).toMatch('"weapon":"nunchaku"');
       expect(!!rows.find(x => x.doc_id == 'raphael')).toBeTruthy();
       expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
+
+      return ouch.processSyncActions(docActions);
     })
-    .then(() => ouch.processSyncActions(docActions))
     .then(result => {
       console.log(result.map(x => x[1]));
       return ouch.getAllRows()
@@ -169,17 +202,32 @@ it('requests all_docs from remote endpoint', () => {
     })
   });
 
+  it('applies no sync actions to local db when given an empty doc', () => {
+    expect.assertions(8);
 
-// it('drops all uneccessary tables from PouchDB', () => {
-//     expect.assertions(3);
-//     return ouch.getTables()
-//     .then(rows => {
-//         expect(rows.length).toEqual(7)
-//         return ouch.dropFunnyTables("by-sequence")
-//     })
-//     .then(() => ouch.getTables())
-//     .then(x => {
-//     expect(x).toContain('by-sequence');
-//     expect(x).toContain('sqlite_sequence');
-//     })
-//   });
+    const docActions = [];
+
+    const [ pouch, ouch ] = dbSetup(7);
+    return pouch.load(dump)
+    .then(() => ouch.getAllRows())
+    .then(allRows => {
+      const rows = allRows[1].rows._array;
+      expect(rows.find(x => x.doc_id == 'donatello').json).toMatch('"weapon":"bo"');
+      expect(rows.find(x => x.doc_id == 'michelangelo').json).toMatch('"weapon":"nunchaku"');
+      expect(!!rows.find(x => x.doc_id == 'raphael')).toBeTruthy();
+      expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
+      return ouch.getRemoteDocs4SyncActions(docActions);
+    })
+    .then(actions => ouch.processSyncActions(actions))
+    .then(result => {
+      console.log(result.map(x => x[1]));
+      return ouch.getAllRows()
+    })
+    .then(allRows => {
+      const rows = allRows[1].rows._array;
+      expect(rows.find(x => x.doc_id == 'donatello').json).toMatch('"weapon":"bo"');
+      expect(rows.find(x => x.doc_id == 'michelangelo').json).toMatch('"weapon":"nunchaku"');
+      expect(!!rows.find(x => x.doc_id == 'raphael')).toBeTruthy();
+      expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
+    })
+  });

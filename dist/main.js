@@ -1239,12 +1239,12 @@ var OuchDB = function OuchDB(db, httpClient) {
   });
 
   defineProperty(this, "getRemoteDoc", function (docID) {
-    return _this.httpClient.get("http://127.0.0.1:5500/resources/".concat(docID, ".json"));
+    return _this.httpClient.get("http://127.0.0.1:3000/".concat(docID));
   });
 
   defineProperty(this, "getAllRemoteDocs", function () {
     return (// need to change the endpoint
-      _this.httpClient.get("http://127.0.0.1:5500/resources/_all_docs_include_docs.json")
+      _this.httpClient.get("http://127.0.0.1:3000/_all_docs?include_docs=true")
     );
   });
 

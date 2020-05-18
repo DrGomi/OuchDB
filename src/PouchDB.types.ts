@@ -91,3 +91,5 @@ export interface DocSyncTransaction {
     state: DocSyncState;
     done: actionDone;
 }
+
+export type TxSyncActionSuccess = [SQLTransaction, DocSyncTransaction];

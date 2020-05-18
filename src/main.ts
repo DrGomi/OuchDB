@@ -276,10 +276,10 @@ export class OuchDB {
     );
 
     getRemoteDoc = (docID: string): any =>
-            this.httpClient.get(`http://127.0.0.1:5500/resources/${docID}.json`)
+            this.httpClient.get(`http://127.0.0.1:3000/${docID}`)
 
     getAllRemoteDocs = ():Promise<TurtleAllFullDocsResponse> => // need to change the endpoint
-        this.httpClient.get(`http://127.0.0.1:5500/resources/_all_docs_include_docs.json`)
+        this.httpClient.get(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
 
     convertDoc2Map = (acc: TurtleDocMap, row: TurtleFullDocsRow): TurtleDocMap => {
         acc[row.id] = row.doc;
