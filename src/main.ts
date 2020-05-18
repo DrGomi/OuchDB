@@ -1,20 +1,35 @@
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
+// import { 
+//     // Query,
+//     Window,
+//     Database,
+//     // ResultSet,
+//     // PouchDBRow,
+//     SQLTransaction,
+//     SQLResultSet,
+//     SQLError,
+//     // TxCallback,
+//     // TxSuccessCallback,
+//     // TxErrorCallback
+// } from './SQLite.types';
+
 import { 
-    Query,
-    Window,
-    Database,
-    SQLiteCallback,
+    // WebSQLiteCallback,
     // ResultSet,
     // PouchDBRow,
-    SQLTransaction,
-    SQLResultSet,
+    WebSQLDatabase,
+    WebSQLTransaction,
+    WebSQLResultSet,
+    ResultSetValue,
     SQLError,
     TxCallback,
     TxSuccessCallback,
     TxErrorCallback
-} from './SQLite.types';
+} from './WebSQLite.types';
 
-import { 
+import {
+    InfoObject,
+    DocCount,
     PouchDBRow,
     AllDocsRow,
     AllDocsResponse,
@@ -41,7 +56,8 @@ type AllDocRowsTuple = [AllDocsRow[], AllDocsRow[]];
 // }
 
 export class OuchDB {
-    db: Database;
+    db: WebSQLDatabase;
+    dbName: string;
     httpClient: HTTPClient;
 
     takeSyncActions = {
@@ -50,14 +66,15 @@ export class OuchDB {
         'update': (tx, act: DocSyncAction) => this.updateSyncAction(tx, act),
     };
 
-    constructor(db: Database, httpClient: HTTPClient) {
+    constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
+        this.dbName = db['_db']['_db']['filename'];
         this.httpClient = httpClient;
         // this.initDBtable()
     }
 
     // resolves execution context from db
-    getTx = async(): Promise<SQLTransaction> => 
+    getTx = async(): Promise<WebSQLTransaction> => 
         new Promise((resolve, reject) => 
             this.db.transaction(
                 (tx) => resolve(tx),
@@ -79,7 +96,7 @@ export class OuchDB {
         );
 
     // extracts rows from resultset
-    mapDocRows = (res: SQLResultSet): PouchDBRow[] => 
+    mapDocRows = (res: WebSQLResultSet): PouchDBRow[] => 
         Object.keys(res.rows).map(_ => res.rows[_])[0];
 
     // transforms pouchdb revision string into integer
@@ -146,8 +163,8 @@ export class OuchDB {
         })
 
     // resolves all table names from db as Array<string> 
-    getTables = (): Promise<string[]> => new Promise((resolve, reject)=> 
-        this.db.transaction(tx =>
+    getTables = (): Promise<ResultSetValue[]> => new Promise((resolve, reject)=> 
+        this.db.readTransaction(tx =>
             tx.executeSql(
                 'SELECT tbl_name from sqlite_master WHERE type = "table"',
                 [],
@@ -157,12 +174,13 @@ export class OuchDB {
         )
     ).then((txCb: TxSuccessCallback) => {
         const [_, res] = txCb;
-        const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
+        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+        // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
         return Promise.resolve(tables);
     })
 
     // drops table from db with given table name
-    drobTable = (tx: SQLTransaction, tableName: string) => new Promise((resolve, reject) =>
+    drobTable = (tx: WebSQLTransaction, tableName: string) => new Promise((resolve, reject) =>
         tx.executeSql(
             `DROP TABLE "${tableName}"`,
             [],
@@ -242,7 +260,7 @@ export class OuchDB {
         return [...changedRows, ...onlyRemoteRows, ...onlyLocalRows];
     }
 
-    updateSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
+    updateSyncAction = (tx: WebSQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) => {
             const {_id, _rev, ...jsonValue} = action.doc;
             const {doc, ...response } = action;
@@ -254,7 +272,7 @@ export class OuchDB {
             )
     });
 
-    addSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
+    addSyncAction = (tx: WebSQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) => {
             const {_id, _rev, ...jsonValue} = action.doc;
             const {doc, ...response } = action;
@@ -267,7 +285,7 @@ export class OuchDB {
             )
     });
 
-    deleteSyncAction = (tx: SQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
+    deleteSyncAction = (tx: WebSQLTransaction, action: DocSyncAction): Promise<TxSyncActionSuccess> => 
         new Promise((resolve, reject) =>
             tx.executeSql(
                 `DELETE FROM "by-sequence" WHERE doc_id = ?`,
@@ -318,12 +336,12 @@ export class OuchDB {
         // (actions[0].state === 'update' || actions[0].state === 'add') 
     );
 
-    syncAction2DB = (tx: SQLTransaction, actions: DocSyncAction[]): Promise<TxSyncActionSuccess>[] => 
+    syncAction2DB = (tx: WebSQLTransaction, actions: DocSyncAction[]): Promise<TxSyncActionSuccess>[] => 
         actions.map(action => this.takeSyncActions[action.state](tx, action));
 
     syncAllActions2DB = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> => 
         this.getTx()
-        .then((tx: SQLTransaction) => 
+        .then((tx: WebSQLTransaction) => 
             Promise.all(this.syncAction2DB(tx, actions)) 
         )
 
@@ -348,17 +366,23 @@ export class OuchDB {
 
     insertDumpRows = (rows: TurtleDoc[]): Promise<TxSyncActionSuccess[]> =>
         this.getTx().then(tx => {
-            const addActions = rows.map(this.convertDoc2Action)
-                                .map(row => this.addSyncAction(tx, row));
+            const addActions = rows.map<DocSyncAction>(doc => (
+                                {
+                                    state: 'add',
+                                    id: doc._id,
+                                    doc: doc
+                                }
+            ))
+            .map(row => this.addSyncAction(tx, row));
             return Promise.all(addActions);
         })
 
-    convertDoc2Action= (doc: TurtleDoc): DocSyncAction => 
-        ({ 
-            state: 'add',
-            id: doc._id,
-            doc: doc
-        });
+    // convertDoc2Action = (doc: TurtleDoc): DocSyncAction => 
+    //     ({ 
+    //         state: 'add',
+    //         id: doc._id,
+    //         doc: doc
+    //     });
 
 
     initDBtable = (): Promise<void> =>
@@ -378,5 +402,32 @@ export class OuchDB {
                 )
             )
         );
+
+    getDocCount = (): Promise<number> => 
+        new Promise((resolve, reject) => 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    'SELECT COUNT(*) as "docCount" FROM "by-sequence"',
+                    [],
+                    (_, res) => resolve(res.rows._array[0]['docCount'] as number),
+                    (_, err) => reject(err)
+                )
+            )
+        );
+
+    info(): Promise<InfoObject> {
+        return this.getDocCount()
+        .then(docCount => {
+            console.log(docCount);
+            return {
+            doc_count: docCount,
+            update_seq: docCount,
+            websql_encoding: 'UTF-8',
+            db_name: this.db['_db']['_db']['filename'],
+            auto_compaction: false,
+            adapter: 'websql'
+        }
+    })
+    }
     
 };

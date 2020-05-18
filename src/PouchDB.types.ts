@@ -1,4 +1,4 @@
-import { SQLTransaction, SQLResultSet, SQLError, ResultSetRow } from './SQLite.types';
+import { WebWeb, WebSQLResultSet, SQLError, ResultSetRow } from './WebSQLite.types';
 
 export interface PouchDBRow extends ResultSetRow {
     deleted: number;
@@ -90,4 +90,21 @@ export interface DocSyncTransaction {
     done: actionDone;
 }
 
-export type TxSyncActionSuccess = [SQLTransaction, DocSyncTransaction];
+export type TxSyncActionSuccess = [WebSQLTransaction, DocSyncTransaction];
+
+
+type TextEncoding = 'UTF-8';
+type DBAdapter = 'websql' | 'sqlite' | 'sqlite3'
+
+export interface InfoObject {
+    doc_count: number;
+    update_seq: number;
+    websql_encoding: TextEncoding;
+    db_name: string;
+    auto_compaction: Boolean;
+    adapter: DBAdapter;
+  }
+
+  export interface DocCount {
+      docCount: number;
+  }

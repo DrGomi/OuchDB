@@ -12,7 +12,7 @@ const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46
 
 const sqliteName = 'turtles_1'
 const pouch = new PouchDB(sqliteName, {adapter: 'websql'});
-pouch.info().then(x => console.log(x));
+// pouch.info().then(x => console.log(x));
 const updateWeapon = (name, arm) =>
   pouch.get(name).then(itm => pouch.put({...itm, ...{ weapon: arm }}));
 

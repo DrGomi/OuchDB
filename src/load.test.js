@@ -27,11 +27,7 @@ const sqliteNames = [
   'turtles_load_1',
   'turtles_load_2',
   'turtles_load_3',
-//   'turtles_load_4',
-//   'turtles_load_5',
-//   'turtles_load_6',
-//   'turtles_load_7',
-//   'turtles_load_8'
+  'turtles_load_4'
 ];
 
 const dbSetup = (index) => {
@@ -53,6 +49,17 @@ const getTables = (db) => new Promise((resolve, reject) =>
     )
 );
 
+// const getInfo = (db) => new Promise((resolve, reject) => 
+//     db.transaction(tx =>
+//         tx.executeSql(
+//             'SELECT COUNT(*) as "rowCount" FROM "by-sequence"',
+//             [],
+//             (tx, res) => resolve(res),
+//             (tx, err) => reject(err)
+//         )
+//     )
+// );
+
 afterAll(() =>  {
   mockCouchDB.close();
   sqliteNames.forEach(db => fs.unlinkSync(db));
@@ -62,8 +69,10 @@ afterAll(() =>  {
 
 it('loads dump into pouchdb', () => {
     expect.assertions(4);
-    const [ pouch, ouch ] = dbSetup(0);
+    const [ pouch, ouch, webSQLDB ] = dbSetup(0);
     return pouch.load(dump)
+    // .then(() => getInfo(webSQLDB))
+    // .then(info => console.log(info.rows._array))
     .then(() => ouch.getLocalAllDocs())
     .then(allDocs => {
         const allDocsKeys = Object.keys(allDocs);
@@ -106,7 +115,7 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
     .then(() => ouch.getAllRows())
     .then(allRows => {
         const rows = allRows[1].rows._array;
-        console.log(rows)
+        // console.log(rows)
         const row_ids = rows.map(r => r.doc_id);
         expect(rows.length).toBe(4);
         expect(row_ids).toContain('donatello');
@@ -116,16 +125,15 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
     })
 });
 
-// it('loads dump-string into ouchdb', () => {
-//     expect.assertions(4);
-//     const [ pouch, ouch ] = dbSetup(1);
-//     return ouch.load(dump)
-//     .then(() => ouch.getLocalAllDocs())
-//     .then(allDocs => {
-//         const allDocsKeys = Object.keys(allDocs);
-//         expect(allDocsKeys).toContain('total_rows');
-//         expect(allDocsKeys).toContain('offset');
-//         expect(allDocsKeys).toContain('rows');
-//         expect(allDocs.total_rows).toEqual(allDocs.rows.length);
-//     })
-// });
+it('show same output from pouch.info() & ouchdb.info()', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(3);
+    return pouch.load(dump)
+    .then(() => Promise.all([
+        pouch.info(),
+        ouch.info()
+    ]))
+    .then(infos => {
+        expect(infos[0]).toEqual(infos[1]);
+    })
+});

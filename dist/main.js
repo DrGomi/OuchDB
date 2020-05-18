@@ -957,6 +957,19 @@ function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (O
 function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
+// import { 
+//     // Query,
+//     Window,
+//     Database,
+//     // ResultSet,
+//     // PouchDBRow,
+//     SQLTransaction,
+//     SQLResultSet,
+//     SQLError,
+//     // TxCallback,
+//     // TxSuccessCallback,
+//     // TxErrorCallback
+// } from './SQLite.types';
 // interface DocSyncStateCheck {
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
@@ -968,6 +981,8 @@ var OuchDB = /*#__PURE__*/function () {
     classCallCheck(this, OuchDB);
 
     defineProperty(this, "db", void 0);
+
+    defineProperty(this, "dbName", void 0);
 
     defineProperty(this, "httpClient", void 0);
 
@@ -1090,7 +1105,7 @@ var OuchDB = /*#__PURE__*/function () {
 
     defineProperty(this, "getTables", function () {
       return new Promise(function (resolve, reject) {
-        return _this.db.transaction(function (tx) {
+        return _this.db.readTransaction(function (tx) {
           return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (tx, res) {
             return resolve([tx, res]);
           }, function (tx, err) {
@@ -1102,9 +1117,11 @@ var OuchDB = /*#__PURE__*/function () {
             _ = _txCb[0],
             res = _txCb[1];
 
-        var tables = res['rows']['_array'].map(function (y) {
+        var tables = res.rows._array.map(function (y) {
           return y['tbl_name'];
-        });
+        }); // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
+
+
         return Promise.resolve(tables);
       });
     });
@@ -1325,19 +1342,17 @@ var OuchDB = /*#__PURE__*/function () {
 
     defineProperty(this, "insertDumpRows", function (rows) {
       return _this.getTx().then(function (tx) {
-        var addActions = rows.map(_this.convertDoc2Action).map(function (row) {
+        var addActions = rows.map(function (doc) {
+          return {
+            state: 'add',
+            id: doc._id,
+            doc: doc
+          };
+        }).map(function (row) {
           return _this.addSyncAction(tx, row);
         });
         return Promise.all(addActions);
       });
-    });
-
-    defineProperty(this, "convertDoc2Action", function (doc) {
-      return {
-        state: 'add',
-        id: doc._id,
-        doc: doc
-      };
     });
 
     defineProperty(this, "initDBtable", function () {
@@ -1352,7 +1367,20 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "getDocCount", function () {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql('SELECT COUNT(*) as "docCount" FROM "by-sequence"', [], function (_, res) {
+            return resolve(res.rows._array[0]['docCount']);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
     this.db = db;
+    this.dbName = db['_db']['_db']['filename'];
     this.httpClient = httpClient; // this.initDBtable()
   } // resolves execution context from db
 
@@ -1369,6 +1397,23 @@ var OuchDB = /*#__PURE__*/function () {
       });
     } // checks if dump string contains dump or just a url to dump file...
 
+  }, {
+    key: "info",
+    value: function info() {
+      var _this3 = this;
+
+      return this.getDocCount().then(function (docCount) {
+        console.log(docCount);
+        return {
+          doc_count: docCount,
+          update_seq: docCount,
+          websql_encoding: 'UTF-8',
+          db_name: _this3.db['_db']['_db']['filename'],
+          auto_compaction: false,
+          adapter: 'websql'
+        };
+      });
+    }
   }]);
 
   return OuchDB;
