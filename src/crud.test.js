@@ -25,8 +25,8 @@ const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46
 
 const sqliteNames = [
   'turtles_crud_1',
-//   'turtles_crud_2',
-//   'turtles_crud_3',
+  'turtles_crud_2',
+  'turtles_crud_3',
 //   'turtles_crud_4'
 ];
 
@@ -46,18 +46,88 @@ afterAll(() =>  {
 
 
 
-it('gets same document via "ouch.get()" as via "pouch.get()"', () => {
+it('gets the same document via "ouch.get()" as via "pouch.get()"', () => {
     expect.assertions(1);
     const [ pouch, ouch ] = dbSetup(0);
     return pouch.load(dump)
-    .then(() => pouch.get("raphael"))
-    .then(info => console.log(info))
+    // .then(() => pouch.get("splinter")).catch(info => console.log(info))
     .then(() => Promise.all([
         pouch.get("leonardo"),
         ouch.get("leonardo"),
     ]))
-    .then(docs => {
-        console.log(docs)
-        expect(docs[0]).toEqual(docs[1]);
+    .then(docs => 
+        expect(docs[0]).toEqual(docs[1])
+    )
+});
+
+it('returns error on malformed doc type', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(1);
+    return pouch.load(dump)
+    .then(() => pouch.put("raphael"))
+    .catch(pouchError => {
+        return ouch.put("raphael")
+        .catch(ouchError => 
+            expect(pouchError).toEqual(ouchError)
+        )
     })
+});
+
+it('returns error on malformed doc => missing "_id"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(2);
+    return pouch.load(dump)
+    .then(() => pouch.put({ name: "raphael"}))
+    .catch(pouchError => {
+        return ouch.put({ name: "raphael"})
+        .catch(ouchError => 
+            expect(pouchError).toEqual(ouchError)
+        )
+    })
+});
+
+// it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
+//     expect.assertions(1);
+//     const [ pouch, ouch ] = dbSetup(0);
+//     return pouch.load(dump)
+//     .then(() => ouch.put("raphael"))
+
+//     .catch(error => {
+//         console.log(error);
+//         expect(error).toEqual({
+//             status: 400,
+//             name: 'bad_request',
+//             message: 'Document must be a JSON object',
+//             error: true
+//           });
+//     })
+// });
+it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(0);
+    return pouch.load(dump)
+    .then(() => ouch.put("raphael"))
+    // .then(() => pouch.put({
+    //     "name": "Splinter",
+    //     "weapon": "stick",
+    //     "bandana": "brown",
+    //     "_id": "splinter",
+    // })).catch(info => console.log(info))
+    // .then(() => Promise.all([
+    //     pouch.get("leonardo"),
+    //     ouch.get("leonardo"),
+    // ]))
+    .catch(error => {
+        // console.log(error);
+        expect(error).toEqual({
+            status: 400,
+            name: 'bad_request',
+            message: 'Document must be a JSON object',
+            error: true
+          });
+    })
+    // .then(docs => {
+    //     console.log(docs);
+    //     expect(docs[0]).toEqual(docs[1]);
+    // })
 });

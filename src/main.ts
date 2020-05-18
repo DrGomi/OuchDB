@@ -31,6 +31,7 @@ import {
 import {
     InfoObject,
     PouchDBDoc,
+    PouchDBRevDoc,
     DocCount,
     PouchDBRow,
     AllDocsRow,
@@ -67,6 +68,37 @@ export class OuchDB {
         'add': (tx, act: DocSyncAction) => this.addSyncAction(tx, act),
         'update': (tx, act: DocSyncAction) => this.updateSyncAction(tx, act),
     };
+
+
+    testDocType = {
+        isArray: (doc) => toString.call(doc) === '[object Array]',
+        isObject: (doc) => toString.call(doc) === '[object Object]',
+        hasID: (doc) => '_id' in doc,
+        hasRev: (doc) => '_rev' in doc,
+    }
+
+    docPutErrors = [
+        {
+            test: doc => !this.testDocType.isObject(doc),
+            error: {
+                status: 400,
+                name: 'bad_request',
+                message: 'Document must be a JSON object',
+                error: true
+            }
+        },{            
+            test: doc => !this.testDocType.hasID(doc),
+            error: {
+                status: 412,
+                name: 'missing_id',
+                message: '_id is required for puts',
+                error: true
+            }
+        },{            
+            test: doc => true,
+            error: undefined
+        }
+    ]
 
     constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
@@ -419,6 +451,18 @@ export class OuchDB {
             )
         );
 
+    getRev = (id: string): Promise<string> => 
+        new Promise((resolve, reject) => 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    `SELECT rev FROM "by-sequence" WHERE doc_id="${id}"`,
+                    [],
+                    (_, res) => resolve(res.rows._array[0]['rev'] as string),
+                    (_, err) => reject(err)
+                )
+            )
+        );
+
     info(): Promise<InfoObject> {
         return this.getDocCount()
         .then(docCount => ({
@@ -432,7 +476,7 @@ export class OuchDB {
         );
     }
 
-    get(id: string): Promise<PouchDBDoc> {
+    get(id: string): Promise<PouchDBRevDoc> {
         return this.getDoc(id)
         .then((row: PouchDBRow) => {
             const json = JSON.parse(row.json);
@@ -444,6 +488,92 @@ export class OuchDB {
                     } 
             });
         })
+        // PouchError { TODO: need an OuchError
+        //     status: 404,
+        //     name: 'not_found',
+        //     message: 'missing',
+        //     error: true,
+        //     reason: 'missing',
+        //     docId: 'splinter'
+        //   }
+      
     }
+    put(doc: PouchDBDoc | PouchDBRevDoc): Promise<any> {
+        let typeCheck = this.docPutErrors.find(i => i.test(doc))
+        if(!!typeCheck.error) {
+            return Promise.reject(typeCheck.error);
+        } else ('_rev' in doc) {
+            return this.getRev(doc._id)
+            .then(rev => {
+                return rev === doc._rev
+                    ?  Promise.resolve({
+                        ok: true,
+                        id: doc._id,
+                        rev: (this.getRevInt(rev) + 1).toString() + rev.slice(1);  
+                    })
+                    : Promise.reject()
+            })
+            .catch(_ => Promise.reject({
+                status: 409,
+                name: 'conflict',
+                message: 'Document update conflict',
+                error: true,
+                id: 'splinter',
+                docId: 'splinter'
+            }))
+        }
+
+    }
+        // .then((row: PouchDBRow) => {
+        //     const json = JSON.parse(row.json);
+        //     return Promise.resolve({ 
+        //         ...json,
+        //         ...{
+        //              _id: row.doc_id, 
+        //              _rev: row.rev 
+        //             } 
+        //     });
+        // })   
+        
+        // PouchError {
+        //     status: 400,
+        //     name: 'bad_request',
+        //     message: 'Document must be a JSON object',
+        //     error: true
+        //   }
+
+        // PouchError {
+        //     status: 412,
+        //     name: 'missing_id',
+        //     message: '_id is required for puts',
+        //     error: true
+        //   }
+
+        // PouchError { // no provided _rev???
+        //     status: 404,
+        //     name: 'not_found',
+        //     message: 'missing',
+        //     error: true,
+        //     reason: 'missing',
+        //     docId: 'splinter'
+        //   }
+
+        // PouchError { // 1st put: _rev provided but no doc present
+                // & 2nd put: no _rev provided
+                // & 2nd put wrong _rev provided
+        //     status: 409,
+        //     name: 'conflict',
+        //     message: 'Document update conflict',
+        //     error: true,
+        //     id: 'splinter',
+        //     docId: 'splinter'
+        //   }
+
+        // {  // 1st no _rev provided
+        //     ok: true,
+        //     id: 'splinter',
+        //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
+        // }
+
     
 };

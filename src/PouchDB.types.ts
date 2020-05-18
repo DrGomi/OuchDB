@@ -1,4 +1,16 @@
-import { WebWeb, WebSQLResultSet, SQLError, ResultSetRow } from './WebSQLite.types';
+import { WebSQLResultSet, SQLError, ResultSetRow } from './WebSQLite.types';
+
+export interface PouchDBDoc {
+    _id: string;
+    // _rev: string;
+    [key: string]: any;
+}
+
+export interface PouchDBRevDoc extends PouchDBDoc {
+    _id: string;
+    _rev: string;
+    [key: string]: any;
+}
 
 export interface PouchDBRow extends ResultSetRow {
     deleted: number;

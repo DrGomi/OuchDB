@@ -998,6 +998,48 @@ var OuchDB = /*#__PURE__*/function () {
       }
     });
 
+    defineProperty(this, "testDocType", {
+      isArray: function isArray(doc) {
+        return toString.call(doc) === '[object Array]';
+      },
+      isObject: function isObject(doc) {
+        return toString.call(doc) === '[object Object]';
+      },
+      hasID: function hasID(doc) {
+        return '_id' in doc;
+      },
+      hasRev: function hasRev(doc) {
+        return '_rev' in doc;
+      }
+    });
+
+    defineProperty(this, "docPutErrors", [{
+      test: function test(doc) {
+        return !_this.testDocType.isObject(doc);
+      },
+      error: {
+        status: 400,
+        name: 'bad_request',
+        message: 'Document must be a JSON object',
+        error: true
+      }
+    }, {
+      test: function test(doc) {
+        return !_this.testDocType.hasID(doc);
+      },
+      error: {
+        status: 412,
+        name: 'missing_id',
+        message: '_id is required for puts',
+        error: true
+      }
+    }, {
+      test: function test(doc) {
+        return true;
+      },
+      error: undefined
+    }]);
+
     defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
       return regenerator.wrap(function _callee$(_context) {
         while (1) {
@@ -1393,6 +1435,18 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "getRev", function (id) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT rev FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
+            return resolve(res.rows._array[0]['rev']);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
     this.db = db;
     this.dbName = db['_db']['_db']['filename'];
     this.httpClient = httpClient; // this.initDBtable()
@@ -1436,8 +1490,73 @@ var OuchDB = /*#__PURE__*/function () {
           _id: row.doc_id,
           _rev: row.rev
         }));
-      });
+      }); // PouchError { TODO: need an OuchError
+      //     status: 404,
+      //     name: 'not_found',
+      //     message: 'missing',
+      //     error: true,
+      //     reason: 'missing',
+      //     docId: 'splinter'
+      //   }
     }
+  }, {
+    key: "put",
+    value: function put(doc) {
+      var typeCheck = this.docPutErrors.find(function (i) {
+        return i.test(doc);
+      });
+
+      if (!!typeCheck.error) {
+        return Promise.reject(typeCheck.error);
+      } else {
+        return this.getRev(doc._id);
+      }
+    } // .then((row: PouchDBRow) => {
+    //     const json = JSON.parse(row.json);
+    //     return Promise.resolve({ 
+    //         ...json,
+    //         ...{
+    //              _id: row.doc_id, 
+    //              _rev: row.rev 
+    //             } 
+    //     });
+    // })   
+    // PouchError {
+    //     status: 400,
+    //     name: 'bad_request',
+    //     message: 'Document must be a JSON object',
+    //     error: true
+    //   }
+    // PouchError {
+    //     status: 412,
+    //     name: 'missing_id',
+    //     message: '_id is required for puts',
+    //     error: true
+    //   }
+    // PouchError { // no provided _rev
+    //     status: 404,
+    //     name: 'not_found',
+    //     message: 'missing',
+    //     error: true,
+    //     reason: 'missing',
+    //     docId: 'splinter'
+    //   }
+    // PouchError { // 1st put: _rev provided but no doc present
+    // & 2nd put: no _rev provided
+    // & 2nd put wrong _rev provided
+    //     status: 409,
+    //     name: 'conflict',
+    //     message: 'Document update conflict',
+    //     error: true,
+    //     id: 'splinter',
+    //     docId: 'splinter'
+    //   }
+    // {  // 1st no _rev provided
+    //     ok: true,
+    //     id: 'splinter',
+    //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
+    // }
+
   }]);
 
   return OuchDB;
