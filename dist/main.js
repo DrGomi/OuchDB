@@ -1343,11 +1343,13 @@ var OuchDB = /*#__PURE__*/function () {
     defineProperty(this, "insertDumpRows", function (rows) {
       return _this.getTx().then(function (tx) {
         var addActions = rows.map(function (doc) {
-          return {
-            state: 'add',
-            id: doc._id,
-            doc: doc
-          };
+          return (// map doc to DocySyncAction
+            {
+              state: 'add',
+              id: doc._id,
+              doc: doc
+            }
+          );
         }).map(function (row) {
           return _this.addSyncAction(tx, row);
         });
@@ -1379,6 +1381,18 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "getDoc", function (id) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
+            return resolve(res.rows._array[0]);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
     this.db = db;
     this.dbName = db['_db']['_db']['filename'];
     this.httpClient = httpClient; // this.initDBtable()
@@ -1403,7 +1417,6 @@ var OuchDB = /*#__PURE__*/function () {
       var _this3 = this;
 
       return this.getDocCount().then(function (docCount) {
-        console.log(docCount);
         return {
           doc_count: docCount,
           update_seq: docCount,
@@ -1412,6 +1425,17 @@ var OuchDB = /*#__PURE__*/function () {
           auto_compaction: false,
           adapter: 'websql'
         };
+      });
+    }
+  }, {
+    key: "get",
+    value: function get(id) {
+      return this.getDoc(id).then(function (row) {
+        var json = JSON.parse(row.json);
+        return Promise.resolve(_objectSpread(_objectSpread({}, json), {
+          _id: row.doc_id,
+          _rev: row.rev
+        }));
       });
     }
   }]);

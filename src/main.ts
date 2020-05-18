@@ -24,11 +24,13 @@ import {
     SQLError,
     TxCallback,
     TxSuccessCallback,
-    TxErrorCallback
+    TxErrorCallback,
+    ResultSetRow
 } from './WebSQLite.types';
 
 import {
     InfoObject,
+    PouchDBDoc,
     DocCount,
     PouchDBRow,
     AllDocsRow,
@@ -367,22 +369,12 @@ export class OuchDB {
     insertDumpRows = (rows: TurtleDoc[]): Promise<TxSyncActionSuccess[]> =>
         this.getTx().then(tx => {
             const addActions = rows.map<DocSyncAction>(doc => (
-                                {
-                                    state: 'add',
-                                    id: doc._id,
-                                    doc: doc
-                                }
+                // map doc to DocySyncAction
+                { state: 'add', id: doc._id, doc: doc } 
             ))
             .map(row => this.addSyncAction(tx, row));
             return Promise.all(addActions);
         })
-
-    // convertDoc2Action = (doc: TurtleDoc): DocSyncAction => 
-    //     ({ 
-    //         state: 'add',
-    //         id: doc._id,
-    //         doc: doc
-    //     });
 
 
     initDBtable = (): Promise<void> =>
@@ -415,19 +407,43 @@ export class OuchDB {
             )
         );
 
+    getDoc = (id: string): Promise<ResultSetRow> => 
+        new Promise((resolve, reject) => 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    `SELECT * FROM "by-sequence" WHERE doc_id="${id}"`,
+                    [],
+                    (_, res) => resolve(res.rows._array[0]),
+                    (_, err) => reject(err)
+                )
+            )
+        );
+
     info(): Promise<InfoObject> {
         return this.getDocCount()
-        .then(docCount => {
-            console.log(docCount);
-            return {
-            doc_count: docCount,
-            update_seq: docCount,
-            websql_encoding: 'UTF-8',
-            db_name: this.db['_db']['_db']['filename'],
-            auto_compaction: false,
-            adapter: 'websql'
-        }
-    })
+        .then(docCount => ({
+                doc_count: docCount,
+                update_seq: docCount,
+                websql_encoding: 'UTF-8',
+                db_name: this.db['_db']['_db']['filename'],
+                auto_compaction: false,
+                adapter: 'websql'
+            })
+        );
+    }
+
+    get(id: string): Promise<PouchDBDoc> {
+        return this.getDoc(id)
+        .then((row: PouchDBRow) => {
+            const json = JSON.parse(row.json);
+            return Promise.resolve({ 
+                ...json,
+                ...{
+                     _id: row.doc_id, 
+                     _rev: row.rev 
+                    } 
+            });
+        })
     }
     
 };
