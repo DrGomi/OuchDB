@@ -1,4 +1,6 @@
-const OuchDB = require('../dist/main')['OuchDB'];
+import { OuchDB } from '../../dist/main';
+const mockCouchDB = require('./couchdb_mock');
+
 const openDatabase = require('websql');
 const PouchDB = require('pouchdb');
 PouchDB.plugin(require('pouchdb-load'));
@@ -7,7 +9,6 @@ PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 const fs = require('fs');
 const fetch = require("node-fetch");
 
-const mockCouchDB = require('../resources/test_server')['couch'];
 mockCouchDB.listen(3000, '127.0.0.2');
 
 const caller = { 

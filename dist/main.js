@@ -957,19 +957,6 @@ function ownKeys(object, enumerableOnly) { var keys = Object.keys(object); if (O
 function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { var source = arguments[i] != null ? arguments[i] : {}; if (i % 2) { ownKeys(Object(source), true).forEach(function (key) { defineProperty(target, key, source[key]); }); } else if (Object.getOwnPropertyDescriptors) { Object.defineProperties(target, Object.getOwnPropertyDescriptors(source)); } else { ownKeys(Object(source)).forEach(function (key) { Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key)); }); } } return target; }
 
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
-// import { 
-//     // Query,
-//     Window,
-//     Database,
-//     // ResultSet,
-//     // PouchDBRow,
-//     SQLTransaction,
-//     SQLResultSet,
-//     SQLError,
-//     // TxCallback,
-//     // TxSuccessCallback,
-//     // TxErrorCallback
-// } from './SQLite.types';
 // interface DocSyncStateCheck {
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
@@ -1435,6 +1422,42 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "getAllDocs", function () {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\"", [], function (_, res) {
+            return resolve(res.rows);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
+    defineProperty(this, "getAllDocsWithStartId", function (idStart) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE id LIKE \"".concat(idStart, "%\""), [], function (_, res) {
+            return resolve(res.rows._array);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
+    defineProperty(this, "putDoc", function (id) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
+            return resolve(res.rows._array[0]);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
     defineProperty(this, "getRev", function (id) {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
@@ -1445,6 +1468,42 @@ var OuchDB = /*#__PURE__*/function () {
           });
         });
       });
+    });
+
+    defineProperty(this, "checkDocId", function (id) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.transaction(function (tx) {
+          return tx.executeSql("SELECT id FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
+            return reject("Doc with id: ".concat(id, " already in db!"));
+          }, function (tx, err) {
+            return resolve(tx);
+          });
+        });
+      });
+    });
+
+    defineProperty(this, "map2AllDoc", function (row) {
+      return {
+        id: row.doc_id,
+        key: row.doc_id,
+        value: {
+          rev: row.rev
+        }
+      };
+    });
+
+    defineProperty(this, "map2AllFullDoc", function (row) {
+      return {
+        id: row.doc_id,
+        key: row.doc_id,
+        value: {
+          rev: row.rev
+        },
+        doc: _objectSpread(_objectSpread({}, JSON.parse(row.json)), {
+          _id: row.doc_id,
+          _rev: row.rev
+        })
+      };
     });
 
     this.db = db;
@@ -1490,6 +1549,15 @@ var OuchDB = /*#__PURE__*/function () {
           _id: row.doc_id,
           _rev: row.rev
         }));
+      })["catch"](function (err) {
+        return Promise.reject({
+          status: 404,
+          name: 'not_found',
+          message: 'missing',
+          error: true,
+          reason: 'missing',
+          docId: id
+        });
       }); // PouchError { TODO: need an OuchError
       //     status: 404,
       //     name: 'not_found',
@@ -1500,16 +1568,78 @@ var OuchDB = /*#__PURE__*/function () {
       //   }
     }
   }, {
+    key: "allDocs",
+    value: function allDocs(option) {
+      var _this4 = this;
+
+      return new Promise(function (resolve, reject) {
+        return _this4.getAllDocs().then(function (rows) {
+          if (!option) {
+            var idNRevs = {
+              total_rows: rows.length,
+              offset: 0,
+              rows: rows._array.map(_this4.map2AllDoc)
+            };
+            resolve(idNRevs);
+          } else {
+            var _idNRevs = {
+              total_rows: rows.length,
+              offset: 0,
+              rows: rows._array.map(_this4.map2AllFullDoc)
+            };
+            resolve(_idNRevs);
+          }
+        });
+      });
+    }
+  }, {
     key: "put",
     value: function put(doc) {
+      var _this5 = this;
+
       var typeCheck = this.docPutErrors.find(function (i) {
         return i.test(doc);
       });
 
       if (!!typeCheck.error) {
         return Promise.reject(typeCheck.error);
+      } else if ('_rev' in doc) {
+        return this.getRev(doc._id).then(function (rev) {
+          return rev === doc._rev ? Promise.resolve({
+            ok: true,
+            id: doc._id,
+            rev: (_this5.getRevInt(rev) + 1).toString() + rev.slice(1)
+          }) : Promise.reject();
+        })["catch"](function (_) {
+          return Promise.reject({
+            status: 409,
+            name: 'conflict',
+            message: 'Document update conflict',
+            error: true,
+            id: doc._id,
+            docId: doc._id
+          });
+        });
       } else {
-        return this.getRev(doc._id);
+        return this.checkDocId(doc._id).then(function (tx) {
+          var addAction = {
+            state: 'add',
+            id: doc._id,
+            doc: _objectSpread(_objectSpread({}, doc), {
+              _rev: '1-XXXXX'
+            })
+          };
+          return _this5.addSyncAction(tx, addAction);
+        })["catch"](function () {
+          return Promise.reject({
+            status: 409,
+            name: 'conflict',
+            message: 'Document update conflict',
+            error: true,
+            id: doc._id,
+            docId: doc._id
+          });
+        });
       }
     } // .then((row: PouchDBRow) => {
     //     const json = JSON.parse(row.json);
@@ -1533,7 +1663,7 @@ var OuchDB = /*#__PURE__*/function () {
     //     message: '_id is required for puts',
     //     error: true
     //   }
-    // PouchError { // no provided _rev
+    // PouchError { // no provided _rev???
     //     status: 404,
     //     name: 'not_found',
     //     message: 'missing',

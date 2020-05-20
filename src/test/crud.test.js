@@ -1,4 +1,5 @@
-const OuchDB = require('../dist/main')['OuchDB'];
+import { OuchDB } from '../../dist/main';
+const mockCouchDB = require('./couchdb_mock');
 const openDatabase = require('websql');
 const PouchDB = require('pouchdb');
 PouchDB.plugin(require('pouchdb-load'));
@@ -7,7 +8,6 @@ PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 const fs = require('fs');
 const fetch = require("node-fetch");
 
-const mockCouchDB = require('../resources/test_server')['couch'];
 mockCouchDB.listen(3000, '127.0.0.3');
 
 const caller = { 
@@ -27,7 +27,8 @@ const sqliteNames = [
   'turtles_crud_1',
   'turtles_crud_2',
   'turtles_crud_3',
-//   'turtles_crud_4'
+  'turtles_crud_4',
+  'turtles_crud_5'
 ];
 
 const dbSetup = (index) => {
@@ -86,6 +87,38 @@ it('returns error on malformed doc => missing "_id"', () => {
     })
 });
 
+it('gets the all document ids & revs via "ouch.getAll()" as via "pouch.getAll()"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(3);
+    return pouch.load(dump)
+    // .then(() => pouch.get("splinter")).catch(info => console.log(info))
+    .then(() => Promise.all([
+        pouch.allDocs(),
+        ouch.allDocs(),
+    ]))
+    .then(docs => {
+
+        console.log(docs[0])
+        console.log(docs[1])
+        expect(docs[0]).toEqual(docs[1])
+    })
+});
+it('gets the all documents via "ouch.getAll()" as via "pouch.getAll()"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(4);
+    return pouch.load(dump)
+    // .then(() => pouch.get("splinter")).catch(info => console.log(info))
+    .then(() => Promise.all([
+        pouch.allDocs({ include_docs: true }),
+        ouch.allDocs({ include_docs: true }),
+    ]))
+    .then(docs => {
+        // console.log(docs[0])
+        // console.log(docs[1])
+        expect(docs[0]).toEqual(docs[1])
+    })
+});
+
 // it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
 //     expect.assertions(1);
 //     const [ pouch, ouch ] = dbSetup(0);
@@ -102,9 +135,10 @@ it('returns error on malformed doc => missing "_id"', () => {
 //           });
 //     })
 // });
+/*
 it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
     expect.assertions(1);
-    const [ pouch, ouch ] = dbSetup(0);
+    const [ pouch, ouch ] = dbSetup(4);
     return pouch.load(dump)
     .then(() => ouch.put("raphael"))
     // .then(() => pouch.put({
@@ -131,3 +165,4 @@ it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
     //     expect(docs[0]).toEqual(docs[1]);
     // })
 });
+    */

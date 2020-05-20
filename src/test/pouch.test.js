@@ -1,9 +1,9 @@
-const OuchDB = require('../dist/main')['OuchDB'];
+import { OuchDB } from '../../dist/main';
+
 const openDatabase = require('websql');
 const PouchDB = require('pouchdb');
 PouchDB.plugin(require('pouchdb-load'));
 PouchDB.plugin(require('pouchdb-adapter-node-websql'));
-
 const fs = require('fs');
 
 const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
