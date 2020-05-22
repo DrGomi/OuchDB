@@ -1,3 +1,5 @@
+import { DocSyncTransaction, PouchDBRow } from './PouchDB.types';
+
 interface DatabaseInfo {
     _db: {
 
@@ -83,7 +85,7 @@ export interface WebSQLDatabase {
   }
   
   export interface WebSQLRows {
-    _array: ResultSetRow[];
+    _array: PouchDBRow[];
     length: number;
   }
   
@@ -92,14 +94,7 @@ export interface WebSQLDatabase {
   }
 
   export type ResultSetValue = string | number;
-  
-  export interface PouchDBRow extends ResultSetRow {
-    deleted: number;
-    doc_id: string;
-    json: string;
-    rev: string;
-    seq: number;
-  }
+
   
   export type WebSQLiteCallback = (
     error?: Error | null,
@@ -112,3 +107,5 @@ export interface WebSQLDatabase {
   export type TxCallback = [WebSQLTransaction, ResultOrError];
   export type TxSuccessCallback = [WebSQLTransaction, WebSQLResultSet];
   export type TxErrorCallback = [WebSQLTransaction, SQLError];
+
+export type TxSyncActionSuccess = [WebSQLTransaction, DocSyncTransaction];

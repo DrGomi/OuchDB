@@ -1027,6 +1027,85 @@ var OuchDB = /*#__PURE__*/function () {
       error: undefined
     }]);
 
+    defineProperty(this, "allDocsActions", [{
+      test: function test(option) {
+        return !option;
+      },
+      action: function action(option) {
+        return _this.getAllDocs().then(function (res) {
+          return _this.mapAllDocs2Response(_this.map2AllDoc)(res);
+        });
+      }
+    }, {
+      test: function test(option) {
+        return Object.keys(option).length == 1 && JSON.stringify(option) == "{\"include_docs\":true}";
+      },
+      action: function action(option) {
+        return _this.getAllDocs().then(function (res) {
+          return _this.mapAllDocs2Response(_this.map2AllFullDoc)(res);
+        });
+      }
+    }, {
+      test: function test(option) {
+        return (// Object.keys(option).length == 1 && 
+          "keys" in option && option['keys'].length > 0
+        );
+      },
+      // action: (option) => this.getMultiDoc('"donatello", "leonardo"').then(res => 
+      action: function action(option) {
+        return _this.getMultiDocs(option.keys.map(function (x) {
+          return "\"".concat(x, "\"");
+        }).join(', ')).then(function (rows) {
+          return Promise.resolve({
+            total_rows: rows.length,
+            offset: 0,
+            // rows: res
+            rows: option.keys.reduce(function (acc, key) {
+              var foundRow = rows._array.find(function (row) {
+                return row.doc_id === key;
+              });
+
+              var returnDoc = !!foundRow ? _this.map2AllFullDoc(foundRow) : {
+                key: key,
+                error: 'not_found'
+              };
+              acc.push(returnDoc);
+              return acc;
+            }, [])
+          });
+        });
+      }
+    }, {
+      test: function test(option) {
+        return (// Object.keys(option).length == 1 && 
+          "keys" in option && option['keys'].length == 0
+        );
+      },
+      action: function action(option) {
+        return _this.getAllDocs().then(function (res) {
+          return Promise.resolve({
+            total_rows: res.length,
+            offset: undefined,
+            rows: []
+          });
+        });
+      }
+    }, {//     test: option => !option,
+      //     action: (option) => 
+      // },{            
+      //     test: option => !option,
+      //     action: (option) => 
+      // },{            
+      //     test: option => !option,
+      //     action: (option) => 
+      // },{            
+      //     test: option => !option,
+      //     action: (option) => 
+      // },{            
+      //     test: option => !option,
+      //     action: (option) => 
+    }]);
+
     defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
       return regenerator.wrap(function _callee$(_context) {
         while (1) {
@@ -1410,11 +1489,23 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    defineProperty(this, "getDoc", function (id) {
+    defineProperty(this, "getSingleDoc", function (id) {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
           return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
             return resolve(res.rows._array[0]);
+          }, function (_, err) {
+            return reject(err);
+          });
+        });
+      });
+    });
+
+    defineProperty(this, "getMultiDocs", function (ids) {
+      return new Promise(function (resolve, reject) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id IN (".concat(ids, ")"), [], function (_, res) {
+            return resolve(res.rows);
           }, function (_, err) {
             return reject(err);
           });
@@ -1438,7 +1529,7 @@ var OuchDB = /*#__PURE__*/function () {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
           return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE id LIKE \"".concat(idStart, "%\""), [], function (_, res) {
-            return resolve(res.rows._array);
+            return resolve(res.rows);
           }, function (_, err) {
             return reject(err);
           });
@@ -1506,6 +1597,20 @@ var OuchDB = /*#__PURE__*/function () {
       };
     });
 
+    defineProperty(this, "mapAllDocs2Response", function (lambda) {
+      return (// mapAllDocs2Response = lambda  => 
+        function (rows) {
+          return _this.getAllDocs().then(function (rows) {
+            return Promise.resolve({
+              total_rows: rows.length,
+              offset: 0,
+              rows: rows._array.map(lambda)
+            });
+          });
+        }
+      );
+    });
+
     this.db = db;
     this.dbName = db['_db']['_db']['filename'];
     this.httpClient = httpClient; // this.initDBtable()
@@ -1543,7 +1648,7 @@ var OuchDB = /*#__PURE__*/function () {
   }, {
     key: "get",
     value: function get(id) {
-      return this.getDoc(id).then(function (row) {
+      return this.getSingleDoc(id).then(function (row) {
         var json = JSON.parse(row.json);
         return Promise.resolve(_objectSpread(_objectSpread({}, json), {
           _id: row.doc_id,
@@ -1570,32 +1675,33 @@ var OuchDB = /*#__PURE__*/function () {
   }, {
     key: "allDocs",
     value: function allDocs(option) {
-      var _this4 = this;
-
-      return new Promise(function (resolve, reject) {
-        return _this4.getAllDocs().then(function (rows) {
-          if (!option) {
-            var idNRevs = {
-              total_rows: rows.length,
-              offset: 0,
-              rows: rows._array.map(_this4.map2AllDoc)
-            };
-            resolve(idNRevs);
-          } else {
-            var _idNRevs = {
-              total_rows: rows.length,
-              offset: 0,
-              rows: rows._array.map(_this4.map2AllFullDoc)
-            };
-            resolve(_idNRevs);
-          }
-        });
-      });
+      return this.allDocsActions.find(function (i) {
+        return i.test(option);
+      }).action(option); // return new Promise((resolve, reject) => 
+      //     this.getAllDocs()
+      //     .then(rows => {
+      //         if(!option){
+      //             const idNRevs = {
+      //                 total_rows: rows.length,
+      //                 offset: 0,
+      //                 rows: rows._array.map<AllIdnRevRow>(this.map2AllDoc)
+      //             };
+      //             resolve(idNRevs);
+      //         } else {
+      //             const idNRevs = {
+      //                 total_rows: rows.length,
+      //                 offset: 0,
+      //                 rows: rows._array.map<AllFullDocsRow>(this.map2AllFullDoc)
+      //             };
+      //             resolve(idNRevs);
+      //         }
+      // })
+      // )
     }
   }, {
     key: "put",
     value: function put(doc) {
-      var _this5 = this;
+      var _this4 = this;
 
       var typeCheck = this.docPutErrors.find(function (i) {
         return i.test(doc);
@@ -1608,7 +1714,7 @@ var OuchDB = /*#__PURE__*/function () {
           return rev === doc._rev ? Promise.resolve({
             ok: true,
             id: doc._id,
-            rev: (_this5.getRevInt(rev) + 1).toString() + rev.slice(1)
+            rev: (_this4.getRevInt(rev) + 1).toString() + rev.slice(1)
           }) : Promise.reject();
         })["catch"](function (_) {
           return Promise.reject({
@@ -1629,7 +1735,7 @@ var OuchDB = /*#__PURE__*/function () {
               _rev: '1-XXXXX'
             })
           };
-          return _this5.addSyncAction(tx, addAction);
+          return _this4.addSyncAction(tx, addAction);
         })["catch"](function () {
           return Promise.reject({
             status: 409,

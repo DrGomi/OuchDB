@@ -11,6 +11,7 @@ import {
     SQLError,
     TxCallback,
     TxSuccessCallback,
+    TxSyncActionSuccess,
     TxErrorCallback,
     ResultSetRow
 } from './WebSQLite.types';
@@ -22,13 +23,14 @@ import {
     DocCount,
     PouchDBRow,
     AllDocsRow,
+    AllIdnRevRow,
     AllDocsResponse,
+    AllDocsIdnRevResponse,
     AllFullDocsRow,
     AllFullDocsResponse,
     DocSyncState,
     DocSyncAction,
     DocSyncTransaction,
-    TxSyncActionSuccess,
     // PouchDBDoc,
     CouchFullDocsRow,
     CouchAllFullDocsResponse,
@@ -37,7 +39,9 @@ import {
     HTTPClient
  } from './PouchDB.types';
 
-type AllDocRowsTuple = [AllDocsRow[], AllDocsRow[]];
+type AllDocRowsTuple = [AllIdnRevRow[], AllIdnRevRow[]];
+
+type Rows2DocsMapper = (row: PouchDBRow) => AllDocsRow;
 
 
 
@@ -88,6 +92,74 @@ export class OuchDB {
         }
     ]
 
+    allDocsActions = [
+        {
+            test: option => !option,
+            action: (option) => this.getAllDocs().then(res => 
+                this.mapAllDocs2Response(this.map2AllDoc)(res)
+            )
+        },{   
+            test: option => (
+                Object.keys(option).length == 1 && 
+                JSON.stringify(option) == "{\"include_docs\":true}"   
+            ),
+            action: (option) => this.getAllDocs().then(res => 
+                this.mapAllDocs2Response(this.map2AllFullDoc)(res)
+            )
+        },{
+            test: option => (
+                // Object.keys(option).length == 1 && 
+                "keys" in option &&
+                option['keys'].length > 0   
+            ),
+            // action: (option) => this.getMultiDoc('"donatello", "leonardo"').then(res => 
+            action: (option) => this.getMultiDocs(option.keys.map(x => `"${x}"`).join(', '))
+            .then(rows =>
+                Promise.resolve({
+                    total_rows: rows.length,
+                    offset: 0,
+                    // rows: res
+                    rows: option.keys.reduce((acc, key) => {
+                        const foundRow = rows._array.find(row => row.doc_id === key);
+                        const returnDoc = !!foundRow 
+                            ? this.map2AllFullDoc(foundRow) 
+                            : { key: key, error: 'not_found'};
+                        acc.push(returnDoc);
+                        return acc;
+                    }, [])
+                })
+            )
+        },{   
+            test: option => (
+                // Object.keys(option).length == 1 && 
+                "keys" in option &&
+                option['keys'].length == 0   
+            ),
+            action: (option) => this.getAllDocs().then(res =>
+                Promise.resolve({ 
+                    total_rows: res.length,
+                    offset: undefined,
+                    rows: [] 
+                })
+            )
+        },{            
+        //     test: option => !option,
+        //     action: (option) => 
+        // },{            
+        //     test: option => !option,
+        //     action: (option) => 
+        // },{            
+        //     test: option => !option,
+        //     action: (option) => 
+        // },{            
+        //     test: option => !option,
+        //     action: (option) => 
+        // },{            
+        //     test: option => !option,
+        //     action: (option) => 
+        }       
+    ]
+
     constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
         this.dbName = db['_db']['_db']['filename'];
@@ -132,7 +204,7 @@ export class OuchDB {
             // : left == right ||
             : this.getRevInt(left.rev) > this.getRevInt(right.rev);
 
-    compareSyncDocs = (left: AllDocsRow, right: AllDocsRow) =>
+    compareSyncDocs = (left: AllIdnRevRow, right: AllIdnRevRow) =>
         left.id !== right.id 
             ? true 
             : this.getRevInt(left.value.rev) > this.getRevInt(right.value.rev);
@@ -225,41 +297,41 @@ export class OuchDB {
         );
 
     // resolves all local rows transformed into couchdb _all_docs response 
-    getLocalAllDocs = (): Promise<AllDocsResponse> => 
+    getLocalAllDocs = (): Promise<AllDocsIdnRevResponse> => 
         this.getAllRows()
         .then(txNrs => {
             const [_, res] = txNrs;
             const rows: PouchDBRow[] = this.mapDocRows(res)
-            const allDocs: AllDocsResponse =  {
+            const allDocs: AllDocsIdnRevResponse =  {
                 total_rows: rows.length,
                 offset: 0,
                 rows: rows.map(doc => ({
                     id: doc.doc_id,
                     key: doc.doc_id,
                     value: { rev: doc.rev }
-                })) as AllDocsRow[]
+                })) as AllIdnRevRow[]
             };
             return Promise.resolve(allDocs);
         });
 
-    getCleanAllDocRows = (rawResponse: AllDocsResponse): AllDocsRow[] => 
+    getCleanAllDocRows = (rawResponse: AllDocsIdnRevResponse): AllIdnRevRow[] => 
         rawResponse.rows.filter(row => row.id !== "_design/access");
     
-    sameIdNHigherRev = (localDoc: AllDocsRow) => (remoteDoc: AllDocsRow): Boolean =>
+    sameIdNHigherRev = (localDoc: AllIdnRevRow) => (remoteDoc: AllIdnRevRow): Boolean =>
         localDoc.id === remoteDoc.id && 
         this.getRevInt(localDoc.value.rev) < this.getRevInt(remoteDoc.value.rev)
 
-    map2SyncAction = (syncState: DocSyncState) =>  (doc: AllDocsRow): DocSyncAction => 
+    map2SyncAction = (syncState: DocSyncState) =>  (doc: AllIdnRevRow): DocSyncAction => 
         ({ state: syncState, id: doc.id });
 
-    getChangedDocs = (leftRows: AllDocsRow[], rightRows: AllDocsRow[]): DocSyncAction[] => 
+    getChangedDocs = (leftRows: AllIdnRevRow[], rightRows: AllIdnRevRow[]): DocSyncAction[] => 
         leftRows
         .filter(leftDoc => !!(rightRows.find(this.sameIdNHigherRev(leftDoc))) )
         .map(this.map2SyncAction('update'));
     
     getExclusiveDocs = (
-                        leftRows: AllDocsRow[],
-                        rightRows: AllDocsRow[],
+                        leftRows: AllIdnRevRow[],
+                        rightRows: AllIdnRevRow[],
                         syncState: DocSyncState
                         ): DocSyncAction[] =>
         leftRows
@@ -427,7 +499,7 @@ export class OuchDB {
             )
         );
 
-    getDoc = (id: string): Promise<PouchDBRow> => 
+    getSingleDoc = (id: string): Promise<PouchDBRow> => 
         new Promise((resolve, reject) => 
             this.db.readTransaction(tx =>
                 tx.executeSql(
@@ -438,6 +510,20 @@ export class OuchDB {
                 )
             )
         );
+
+
+    getMultiDocs = (ids: string): Promise<WebSQLRows> =>
+        new Promise((resolve, reject) => 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    `SELECT * FROM "by-sequence" WHERE doc_id IN (${ids})`,
+                    [],
+                    (_, res) => resolve(res.rows),
+                    (_, err) => reject(err)
+                )
+            )
+        );
+
 
     getAllDocs = (): Promise<WebSQLRows> => 
         new Promise((resolve, reject) => 
@@ -457,7 +543,7 @@ export class OuchDB {
                 tx.executeSql(
                     `SELECT * FROM "by-sequence" WHERE id LIKE "${idStart}%"`,
                     [],
-                    (_, res) => resolve(res.rows._array),
+                    (_, res) => resolve(res.rows),
                     (_, err) => reject(err)
                 )
             )
@@ -513,7 +599,7 @@ export class OuchDB {
     }
 
     get(id: string): Promise<PouchDBDoc> {
-        return this.getDoc(id)
+        return this.getSingleDoc(id)
         .then((row: PouchDBRow) => {
             const json = JSON.parse(row.json);
             return Promise.resolve({ 
@@ -543,40 +629,57 @@ export class OuchDB {
       
     }
 
-    map2AllDoc = (row: PouchDBRow) => ({
+    map2AllDoc = (row: PouchDBRow): AllIdnRevRow => ({
         id: row.doc_id as string,
         key: row.doc_id as string,
         value: { rev:  row.rev as string }
     });
 
-    map2AllFullDoc = (row: PouchDBRow) => ({
+    map2AllFullDoc = (row: PouchDBRow): AllFullDocsRow => ({
         id: row.doc_id as string,
         key: row.doc_id as string,
         value: { rev:  row.rev as string },
         doc: { ...JSON.parse(row.json), ...{ _id: row.doc_id, _rev: row.rev }}
     });
 
-    allDocs(option: AllDocsOptions): Promise<AllDocsResponse|AllFullDocsRow> {
-        return new Promise((resolve, reject) => 
+    // mapAllDocs2Response = (lambda: PouchDBRow): AllDocsRow|AllFullDocsRow =>
+
+
+    mapAllDocs2Response = (lambda: Rows2DocsMapper)  => 
+    // mapAllDocs2Response = lambda  => 
+        (rows: WebSQLRows): Promise<AllDocsResponse> =>
             this.getAllDocs()
-            .then(rows => {
-                if(!option){
-                    const idNRevs = {
-                        total_rows: rows.length,
-                        offset: 0,
-                        rows: rows._array.map<AllDocsRow>(this.map2AllDoc)
-                    };
-                    resolve(idNRevs);
-                } else {
-                    const idNRevs = {
-                        total_rows: rows.length,
-                        offset: 0,
-                        rows: rows._array.map<AllFullDocsRow>(this.map2AllFullDoc)
-                    };
-                    resolve(idNRevs);
-                }
-        })
-        )
+            .then(rows =>  Promise.resolve<AllDocsResponse>({
+                    total_rows: rows.length,
+                    offset: 0,
+                    rows: rows._array.map<AllDocsRow>(lambda)
+                })    
+            )
+
+
+
+    allDocs(option: AllDocsOptions): Promise<AllDocsResponse> {
+        return this.allDocsActions.find(i => i.test(option)).action(option)
+        // return new Promise((resolve, reject) => 
+        //     this.getAllDocs()
+        //     .then(rows => {
+        //         if(!option){
+        //             const idNRevs = {
+        //                 total_rows: rows.length,
+        //                 offset: 0,
+        //                 rows: rows._array.map<AllIdnRevRow>(this.map2AllDoc)
+        //             };
+        //             resolve(idNRevs);
+        //         } else {
+        //             const idNRevs = {
+        //                 total_rows: rows.length,
+        //                 offset: 0,
+        //                 rows: rows._array.map<AllFullDocsRow>(this.map2AllFullDoc)
+        //             };
+        //             resolve(idNRevs);
+        //         }
+        // })
+        // )
     };
 
     put(doc: PouchDBMinimalDoc | PouchDBDoc): Promise<any> {

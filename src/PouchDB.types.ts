@@ -20,14 +20,14 @@ export interface PouchDBRow {
     seq?: number;
 }
 
-export interface CouchFullDocsRow extends AllDocsRow {
+export interface CouchFullDocsRow extends AllIdnRevRow {
     id: string;
     key: string;
     value: AllDocsRev;
     doc: PouchDBDoc;
 }
 
-export interface CouchAllFullDocsResponse extends AllDocsRow{
+export interface CouchAllFullDocsResponse extends AllIdnRevRow{
     total_rows: number;
     offset: number;
     rows: CouchFullDocsRow[];
@@ -41,23 +41,23 @@ interface AllDocsRev {
     rev: string;
 }
 
-export interface AllDocsRow {
+export interface AllIdnRevRow {
     id: string;
     key: string;
     value: AllDocsRev;
 }
 
-export interface AllFullDocsRow extends AllDocsRow{
+export interface AllFullDocsRow extends AllIdnRevRow{
     id: string;
     key: string;
     value: AllDocsRev;
     doc: PouchDBRow;
 }
 
-export interface AllDocsResponse {
+export interface AllDocsIdnRevResponse {
     total_rows?: number;
     offset: number;
-    rows: AllDocsRow[];
+    rows: AllIdnRevRow[];
 }
 
 export interface FullCouchDoc {
@@ -65,11 +65,21 @@ export interface FullCouchDoc {
     _rev: string;
 }
 
-export interface AllFullDocsResponse extends AllDocsRow{
+export interface AllFullDocsResponse {
     total_rows: number;
     offset: number;
     rows: AllFullDocsRow[];
 }
+
+export type AllDocsRow = AllIdnRevRow | AllFullDocsRow;
+
+// export type AllDocsResponse = AllDocsIdnRevResponse | AllFullDocsResponse;
+export interface AllDocsResponse {
+    total_rows: number;
+    offset: number;
+    rows: AllDocsRow[];
+}
+
 
 // export interface TurtleDocMap {
 //     [key: string]: TurtleDoc;
@@ -97,7 +107,7 @@ export interface AllFullDocsResponse extends AllDocsRow{
 // }
 
 export type couchResponse = ResultSetRow | AllFullDocsRow |
-AllDocsResponse | AllFullDocsResponse // | TurtleAllFullDocsResponse;
+AllDocsIdnRevResponse | AllFullDocsResponse // | TurtleAllFullDocsResponse;
 
 export interface HTTPClient {
     get: (url: string) => Promise<any>;

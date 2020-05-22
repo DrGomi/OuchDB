@@ -28,7 +28,10 @@ const sqliteNames = [
   'turtles_crud_2',
   'turtles_crud_3',
   'turtles_crud_4',
-  'turtles_crud_5'
+  'turtles_crud_5',
+  'turtles_crud_6',
+  'turtles_crud_7',
+//   'turtles_crud_5',
 ];
 
 const dbSetup = (index) => {
@@ -87,7 +90,7 @@ it('returns error on malformed doc => missing "_id"', () => {
     })
 });
 
-it('gets the all document ids & revs via "ouch.getAll()" as via "pouch.getAll()"', () => {
+it('gets  all document ids & revs via "ouch.getAll()" as via "pouch.getAll()"', () => {
     expect.assertions(1);
     const [ pouch, ouch ] = dbSetup(3);
     return pouch.load(dump)
@@ -97,13 +100,12 @@ it('gets the all document ids & revs via "ouch.getAll()" as via "pouch.getAll()"
         ouch.allDocs(),
     ]))
     .then(docs => {
-
-        console.log(docs[0])
-        console.log(docs[1])
+        // console.log(docs[0])
+        // console.log(docs[1])
         expect(docs[0]).toEqual(docs[1])
     })
 });
-it('gets the all documents via "ouch.getAll()" as via "pouch.getAll()"', () => {
+it('gets all full docs via "ouch.getAll()" as via "pouch.getAll()"', () => {
     expect.assertions(1);
     const [ pouch, ouch ] = dbSetup(4);
     return pouch.load(dump)
@@ -118,6 +120,61 @@ it('gets the all documents via "ouch.getAll()" as via "pouch.getAll()"', () => {
         expect(docs[0]).toEqual(docs[1])
     })
 });
+
+it('gets three doc ids & revs via "ouch.getAll({ keys: [id1, di2, id3] })"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(5);
+    return pouch.load(dump)
+    // .then(() => pouch.get("splinter")).catch(info => console.log(info))
+    .then(() => Promise.all([
+        pouch.allDocs({ keys: ["donatello", "michelangelo", "shredder" ], include_docs: true }),
+        ouch.allDocs( { keys: ["donatello", "michelangelo", "shredder" ] })
+    ]))
+    .then(docs => {
+        // console.log(docs[0].rows.map(x => x))
+        // console.log(docs[0].rows) // odd...
+        // console.log(docs[0].rows['-1']) // ...very odd!!
+        const normalizedPouchRows = docs[0].rows.map(x => x);
+        // console.log(normalizedPouchRows)
+        // console.log(docs[1].rows)
+        expect(normalizedPouchRows).toEqual(docs[1].rows)
+    })
+});
+
+it('returns [] as rows value via "ouch.getAll({ keys: [] })"', () => {
+    expect.assertions(1);
+    const [ pouch, ouch ] = dbSetup(6);
+    return pouch.load(dump)
+    .then(() => Promise.all([
+        pouch.allDocs({ keys: [] }),
+        ouch.allDocs( { keys: [] })
+    ]))
+    .then(docs => {
+        expect(docs[0]).toEqual(docs[1])
+    })
+});
+
+// it('gets three full docs via "ouch.getAll({ keys: [id1, di2, id3] })"', () => {
+//     expect.assertions(1);
+//     const [ pouch, ouch ] = dbSetup(6);
+//     return pouch.load(dump)
+//     // .then(() => pouch.get("splinter")).catch(info => console.log(info))
+//     .then(() => Promise.all([
+//         pouch.allDocs({ keys: ["donatello", "michelangelo", "shredder" ], include_docs: true }),
+//         ouch.allDocs( { keys: ["donatello", "michelangelo", "shredder" ], include_docs: true })
+//         // pouch.get("shredder"),
+//         // ouch.allDocs({ include_docs: true }),
+//     ]))
+//     .catch(err => {
+//         console.log(err);
+//         expect(true).toBeTruthy();
+//     })
+//     .then(docs => {
+//         console.log(docs[0])
+//         console.log(docs[1])
+//         expect(true).toBeTruthy();
+//     })
+// });
 
 // it('guts a new document via "ouch.put()" as via "pouch.put()"', () => {
 //     expect.assertions(1);

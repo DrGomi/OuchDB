@@ -1,7 +1,7 @@
 // import { ouchDB } from "./main";
 
 const pouch = new PouchDB('turtles', { adapter: 'websql' });
-const ouch = new OuchDB('_pouch_turtles');
+// const ouch = new OuchDB('_pouch_turtles');
 pouch.get('_local/preloaded')
 .catch(err =>  {
   if (err.status !== 404) {
@@ -9,21 +9,17 @@ pouch.get('_local/preloaded')
   }
   return pouch.load('resources/turtles.txt')
 })
-// .then(() => new Promise(resolve => {
-//     openDatabase('_pouch_turtles', '1', 'foo', 2 * 1024 * 1024)
-//         .transaction(tx => resolve(tx))
-// }))
-.then(() => pouch.get('donatello').then(itm => pouch.put({...itm, ...{ weapon: 'booo' }})))
-.then(() => ouch.getAllRows("by-sequence"))
-.then(txNres => new Promise((resolve, reject) => {
-    const [tx, res] = txNres;
-    const origSeq = ouch.mapDocRows(res);
-    const filterSeq = ouch.filterOldRevs(origSeq);
-    ouch.killOldRevs(origSeq, filterSeq); // side effect! 
-    ouch.dropFunnyTables(tx)
-    resolve([origSeq, filterSeq]);
-}))
-.then(res => {
-    console.log(res);
+    // .then(() => pouch.get("splinter")).catch(info => console.log(info))
+.then(() => 
+  pouch.allDocs({ keys: [
+    "michelangelo",
+    "donatello",
+    "shredder"
+  ], include_docs: true }))
+.catch(err => {
+    console.log(err);
+    expect(true).toBeTruthy();
 })
-.catch(console.log.bind(console));
+.then(docs => {
+    console.log(JSON.stringify(docs));
+})
