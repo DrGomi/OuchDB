@@ -1,28 +1,19 @@
 import { OuchDB } from '../../dist/main';
-const mockCouchDB = require('./couchdb_mock');
+const mockCouchDB = require('./test_utils')['mockCouchDB'];
+const dump = require('./test_utils')['turtleDump'];
+const dbSetup = require('./test_utils')['dbSetup'];
+const getTables = require('./test_utils')['getTables'];
 
 const openDatabase = require('websql');
-const PouchDB = require('pouchdb');
-PouchDB.plugin(require('pouchdb-load'));
-PouchDB.plugin(require('pouchdb-adapter-node-websql'));
+// const PouchDB = require('pouchdb');
+// PouchDB.plugin(require('pouchdb-load'));
+// PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 
 const fs = require('fs');
-const fetch = require("node-fetch");
 
-mockCouchDB.listen(3000, '127.0.0.2');
+mockCouchDB.listen(3000, '127.0.0.22');
 
-const caller = { 
-    get: url => new Promise((resolve, reject) => 
-        fetch(url)
-        .then(res => resolve(res.json()))
-        .catch(err => reject('error', err))
-    )
-};
-
-const dump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
-{"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
-{"seq":4}`;
-
+const caller = require('./test_utils')['caller']; 
 
 const sqliteNames = [
   'turtles_load_1',
@@ -30,36 +21,6 @@ const sqliteNames = [
   'turtles_load_3',
   'turtles_load_4'
 ];
-
-const dbSetup = (index) => {
-  const pouch = new PouchDB(sqliteNames[index], {adapter: 'websql'});
-  const webSQLDB = openDatabase(sqliteNames[index], '1', 'blah', 1);
-  const ouch = new OuchDB(webSQLDB, caller);
-  return [ pouch, ouch, webSQLDB ];
-}
-
-
-const getTables = (db) => new Promise((resolve, reject) => 
-    db.transaction(tx =>
-        tx.executeSql(
-            'SELECT tbl_name from sqlite_master WHERE type = "table"',
-            [],
-            (tx, res) => resolve(res),
-            (tx, err) => reject(err)
-        )
-    )
-);
-
-// const getInfo = (db) => new Promise((resolve, reject) => 
-//     db.transaction(tx =>
-//         tx.executeSql(
-//             'SELECT COUNT(*) as "rowCount" FROM "by-sequence"',
-//             [],
-//             (tx, res) => resolve(res),
-//             (tx, err) => reject(err)
-//         )
-//     )
-// );
 
 afterAll(() =>  {
   mockCouchDB.close();
@@ -70,7 +31,7 @@ afterAll(() =>  {
 
 it('loads dump into pouchdb', () => {
     expect.assertions(4);
-    const [ pouch, ouch, webSQLDB ] = dbSetup(0);
+    const [ pouch, ouch, webSQLDB ] = dbSetup(sqliteNames[0]);
     return pouch.load(dump)
     // .then(() => getInfo(webSQLDB))
     // .then(info => console.log(info.rows._array))
@@ -86,11 +47,13 @@ it('loads dump into pouchdb', () => {
 
 it('initializes "by-sequence" table in SQLite by calling "load()" on OuchDB', () => {
     expect.assertions(3);
+
+    
     const webSQLDB = openDatabase(sqliteNames[1], '1', 'blah', 1);
     return getTables(webSQLDB)
     .then(allTables => {
-        const tableNames = allTables.rows._array;
-        expect(tableNames.length).toBe(0);
+        const tableNb = allTables.rows.length;
+        expect(tableNb).toBe(0);
         const ouch = new OuchDB(webSQLDB, caller);
         return ouch.load(dump)
     })
@@ -110,6 +73,7 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
+        // console.log(error);
         expect(error).toBeDefined();
         return ouch.load(dump)
     })
@@ -128,7 +92,7 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
 
 it('show same output from pouch.info() & ouchdb.info()', () => {
     expect.assertions(1);
-    const [ pouch, ouch ] = dbSetup(3);
+    const [ pouch, ouch ] = dbSetup(sqliteNames[3]);
     return pouch.load(dump)
     .then(() => Promise.all([
         pouch.info(),
