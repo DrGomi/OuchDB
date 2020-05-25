@@ -43,8 +43,6 @@ type AllDocRowsTuple = [AllIdnRevRow[], AllIdnRevRow[]];
 
 type Rows2DocsMapper = (row: PouchDBRow) => AllDocsRow;
 
-
-
 // interface DocSyncStateCheck {
 //     guard: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) =>  Boolean;
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
@@ -87,76 +85,99 @@ export class OuchDB {
                 error: true
             }
         },{            
-            test: doc => true,
+            test: () => true,
             error: undefined
         }
     ]
 
+    putDocActions = [
+        {
+            test: doc => !!this.docPutErrors.find(i => i.test(doc)).error,
+            action: doc => Promise.reject(this.docPutErrors.find(i => i.test(doc)).error)
+        },{
+            test: doc => ('_rev' in doc),
+            action: doc => this.getRev(doc._id)
+                .then(rev => this.checkDocRevWithDBRev(doc as PouchDBDoc, rev))
+                .catch(() => Promise.reject(this.docUpdateConflictError(doc._id)))
+        },{
+            test: doc => !('_rev' in doc),
+            action: doc => this.addDocIfIdIsNew(doc)
+            .catch(() => Promise.reject(this.docUpdateConflictError(doc._id)))
+        }
+    ];
+
     allDocsActions = [
         {
-            test: option => !option,
-            action: (option) => this.getAllDocs().then(res => 
+            test: (option: AllDocsOptions) => !option,
+            action: () => this.getAllDocs().then(res => 
                 this.mapAllDocs2Response(this.map2AllDoc)(res)
             )
         },{   
-            test: option => (
+            test: (option: AllDocsOptions) => (
                 Object.keys(option).length == 1 && 
                 JSON.stringify(option) == "{\"include_docs\":true}"   
             ),
-            action: (option) => this.getAllDocs().then(res => 
+            action: () => this.getAllDocs().then(res => 
                 this.mapAllDocs2Response(this.map2AllFullDoc)(res)
             )
         },{
-            test: option => (
+            test: (option: AllDocsOptions) => (
                 // Object.keys(option).length == 1 && 
                 "keys" in option &&
                 option['keys'].length > 0   
             ),
-            // action: (option) => this.getMultiDoc('"donatello", "leonardo"').then(res => 
-            action: (option) => this.getMultiDocs(option.keys.map(x => `"${x}"`).join(', '))
-            .then(rows =>
-                Promise.resolve({
-                    total_rows: rows.length,
-                    offset: 0,
-                    // rows: res
-                    rows: option.keys.reduce((acc, key) => {
-                        const foundRow = rows._array.find(row => row.doc_id === key);
-                        const returnDoc = !!foundRow 
-                            ? this.map2AllFullDoc(foundRow) 
-                            : { key: key, error: 'not_found'};
-                        acc.push(returnDoc);
-                        return acc;
-                    }, [])
-                })
-            )
+            action: (option: AllDocsOptions) => 
+                this.getMultiDocs(this.ids2QueryString(option.keys))
+                .then(rows =>
+                    Promise.resolve({
+                        total_rows: rows.length,
+                        offset: 0,
+                        // rows: res
+                        rows: option.keys.reduce((acc, key) => {
+                            const foundRow = rows._array.find(row => row.doc_id === key);
+                            const returnDoc = !!foundRow 
+                                ? this.map2AllFullDoc(foundRow) 
+                                : { key: key, error: 'not_found'};
+                            acc.push(returnDoc);
+                            return acc;
+                        }, [])
+                    })
+                )
         },{   
-            test: option => (
+            test: (option: AllDocsOptions) => (
                 // Object.keys(option).length == 1 && 
                 "keys" in option &&
                 option['keys'].length == 0   
             ),
-            action: (option) => this.getAllDocs().then(res =>
+            action: () => this.getAllDocs().then(res =>
                 Promise.resolve({ 
                     total_rows: res.length,
                     offset: undefined,
                     rows: [] 
                 })
             )
+        },{             
+            test: (option: AllDocsOptions) => (
+                "startkey" in option &&
+                "endkey" in option &&
+                (!("include_docs" in option) || option['include_docs'] !== true)
+            ),
+            action: (option: AllDocsOptions) => this.getAllDocsWithStartId(option.startkey)
+                .then(res => this.mapAllDocs2Response(this.map2AllDoc)(res))
         },{            
-        //     test: option => !option,
-        //     action: (option) => 
-        // },{            
-        //     test: option => !option,
-        //     action: (option) => 
-        // },{            
-        //     test: option => !option,
-        //     action: (option) => 
-        // },{            
-        //     test: option => !option,
-        //     action: (option) => 
-        // },{            
-        //     test: option => !option,
-        //     action: (option) => 
+            test: (option: AllDocsOptions) => (
+                "startkey" in option &&
+                "endkey" in option &&
+                "include_docs" in option &&
+                 option['include_docs'] == true
+            ),
+            action: (option: AllDocsOptions) => this.getAllDocsWithStartId(option.startkey)
+                .then(res => this.mapAllDocs2Response(this.map2AllFullDoc)(res))
+        },{            
+            test: () => true,
+            action: () => Promise.reject({
+
+            })
         }       
     ]
 
@@ -370,6 +391,8 @@ export class OuchDB {
         new Promise((resolve, reject) => {
             const {_id, _rev, ...jsonValue} = action.doc;
             const {doc, ...response } = action;
+            // console.log(tx)
+            // console.log(action)
             tx.executeSql(
                 `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
                  VALUES (?, ?, ?, ?)`,
@@ -481,8 +504,8 @@ export class OuchDB {
                         rev TEXT
                     )`,
                     [],
-                    (tx, res) => resolve(),
-                    (tx, err) => reject(err)
+                    () => resolve(),
+                    (_, err) => reject(err)
                 )
             )
         );
@@ -511,6 +534,8 @@ export class OuchDB {
             )
         );
 
+    ids2QueryString = (ids: string[]): string => 
+        ids.map(x => `"${x}"`).join(', ')
 
     getMultiDocs = (ids: string): Promise<WebSQLRows> =>
         new Promise((resolve, reject) => 
@@ -541,7 +566,7 @@ export class OuchDB {
         new Promise((resolve, reject) => 
             this.db.readTransaction(tx =>
                 tx.executeSql(
-                    `SELECT * FROM "by-sequence" WHERE id LIKE "${idStart}%"`,
+                    `SELECT * FROM "by-sequence" WHERE doc_id LIKE "${idStart}%"`,
                     [],
                     (_, res) => resolve(res.rows),
                     (_, err) => reject(err)
@@ -549,17 +574,6 @@ export class OuchDB {
             )
         );
 
-    putDoc = (id: string): Promise<PouchDBRow> => 
-        new Promise((resolve, reject) => 
-            this.db.readTransaction(tx =>
-                tx.executeSql(
-                    `SELECT * FROM "by-sequence" WHERE doc_id="${id}"`,
-                    [],
-                    (_, res) => resolve(res.rows._array[0]),
-                    (_, err) => reject(err)
-                )
-            )
-        );
 
     getRev = (id: string): Promise<string> => 
         new Promise((resolve, reject) => 
@@ -567,7 +581,9 @@ export class OuchDB {
                 tx.executeSql(
                     `SELECT rev FROM "by-sequence" WHERE doc_id="${id}"`,
                     [],
-                    (_, res) => resolve(res.rows._array[0]['rev'] as string),
+                    (_, res) => (res.rows.length > 0 && 'rev' in res.rows._array[0])
+                            ? resolve(res.rows._array[0]['rev'] as string)
+                            : reject(),
                     (_, err) => reject(err)
                 )
             )
@@ -575,15 +591,40 @@ export class OuchDB {
 
     checkDocId = (id: string): Promise<WebSQLTransaction> => 
         new Promise((resolve, reject) => 
-            this.db.transaction(tx =>
+            this.db.readTransaction(tx =>
                 tx.executeSql(
-                    `SELECT id FROM "by-sequence" WHERE doc_id="${id}"`,
+                    `SELECT doc_id FROM "by-sequence" WHERE doc_id="${id}"`,
                     [],
-                    (_, res) => reject(`Doc with id: ${id} already in db!`),
-                    (tx, err) => resolve(tx)
+                    (tx, res) => {
+                        (res.rows.length === 0)
+                            ? resolve(tx)
+                            : reject(`Doc with id: ${id} already in db!`)
+                    },
+                    (tx, _) => resolve(tx)
                 )
             )
         );
+
+    insertDoc = (tx: WebSQLTransaction, doc: PouchDBMinimalDoc): Promise<WebSQLTransaction> => 
+        new Promise((resolve, reject) => {
+            const { id, rev, ...jsonValue } = doc;
+            // console.log(tx)
+            console.log(doc)
+            tx.executeSql(
+                `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
+                 VALUES (?, ?, ?, ?)`,
+                [JSON.stringify(jsonValue), 0, id, '1-YYY'],
+                (tx, res) => {
+                    console.log('SUCCESS')
+                    console.log(res)
+                    resolve(tx)
+                },
+                (tx, err) => {
+                    console.log(err)
+                    reject(err)
+                },
+            )
+    });
 
     info(): Promise<InfoObject> {
         return this.getDocCount()
@@ -598,35 +639,29 @@ export class OuchDB {
         );
     }
 
+    getDocResponse = (row: PouchDBRow): PouchDBDoc => {
+        const newDoc = JSON.parse(row.json);
+        newDoc['_id'] = row.doc_id;
+        newDoc['_rev'] = row.rev;
+        return newDoc;
+    }
+
+
+    getDocError = (id: string) => ({
+        status: 404,
+        name: 'not_found',
+        message: 'missing',
+        error: true,
+        reason: 'missing',
+        docId: id
+    })
+
     get(id: string): Promise<PouchDBDoc> {
-        return this.getSingleDoc(id)
-        .then((row: PouchDBRow) => {
-            const json = JSON.parse(row.json);
-            return Promise.resolve({ 
-                ...json,
-                ...{
-                     _id: row.doc_id, 
-                     _rev: row.rev 
-                    } 
-            });
-        })
-        .catch(err => Promise.reject({
-            status: 404,
-            name: 'not_found',
-            message: 'missing',
-            error: true,
-            reason: 'missing',
-            docId: id
-        }))
-        // PouchError { TODO: need an OuchError
-        //     status: 404,
-        //     name: 'not_found',
-        //     message: 'missing',
-        //     error: true,
-        //     reason: 'missing',
-        //     docId: 'splinter'
-        //   }
-      
+        return new Promise((resolve, reject) =>
+            this.getSingleDoc(id)
+            .then((row: PouchDBRow) => resolve(this.getDocResponse(row)))
+            .catch(err => reject(this.getDocError(id)))
+        )
     }
 
     map2AllDoc = (row: PouchDBRow): AllIdnRevRow => ({
@@ -642,140 +677,67 @@ export class OuchDB {
         doc: { ...JSON.parse(row.json), ...{ _id: row.doc_id, _rev: row.rev }}
     });
 
-    // mapAllDocs2Response = (lambda: PouchDBRow): AllDocsRow|AllFullDocsRow =>
-
 
     mapAllDocs2Response = (lambda: Rows2DocsMapper)  => 
-    // mapAllDocs2Response = lambda  => 
         (rows: WebSQLRows): Promise<AllDocsResponse> =>
-            this.getAllDocs()
-            .then(rows =>  Promise.resolve<AllDocsResponse>({
+            Promise.resolve<AllDocsResponse>({
                     total_rows: rows.length,
                     offset: 0,
                     rows: rows._array.map<AllDocsRow>(lambda)
-                })    
-            )
+                })
 
 
 
     allDocs(option: AllDocsOptions): Promise<AllDocsResponse> {
-        return this.allDocsActions.find(i => i.test(option)).action(option)
-        // return new Promise((resolve, reject) => 
-        //     this.getAllDocs()
-        //     .then(rows => {
-        //         if(!option){
-        //             const idNRevs = {
-        //                 total_rows: rows.length,
-        //                 offset: 0,
-        //                 rows: rows._array.map<AllIdnRevRow>(this.map2AllDoc)
-        //             };
-        //             resolve(idNRevs);
-        //         } else {
-        //             const idNRevs = {
-        //                 total_rows: rows.length,
-        //                 offset: 0,
-        //                 rows: rows._array.map<AllFullDocsRow>(this.map2AllFullDoc)
-        //             };
-        //             resolve(idNRevs);
-        //         }
-        // })
-        // )
+        return this.allDocsActions
+                .find(i => i.test(option)).action(option)
     };
 
-    put(doc: PouchDBMinimalDoc | PouchDBDoc): Promise<any> {
-        let typeCheck = this.docPutErrors.find(i => i.test(doc))
-        if(!!typeCheck.error) {
-            return Promise.reject(typeCheck.error);
-        } else if ('_rev' in doc) {
-            return this.getRev(doc._id)
-            .then(rev => {
-                return rev === doc._rev
-                    ?  Promise.resolve({
-                        ok: true,
-                        id: doc._id,
-                        rev: (this.getRevInt(rev) + 1).toString() + rev.slice(1)  
-                    })
-                    : Promise.reject();
-            })
-            .catch(_ => Promise.reject({
-                status: 409,
-                name: 'conflict',
-                message: 'Document update conflict',
-                error: true,
-                id: doc._id,
-                docId: doc._id
-            }))
-        } else {
-            return this.checkDocId(doc._id)
-                .then(tx => {
-                    const addAction: DocSyncAction = {
-                        state: 'add',
-                        id: doc._id,
-                        doc: { 
-                            ...doc, 
-                            ...{ _rev: '1-XXXXX' } // generate some rev here!
-                            }
-                    }
-                    return this.addSyncAction(tx, addAction);
-                } 
-                )
-                .catch(() => Promise.reject({
-                    status: 409,
-                    name: 'conflict',
-                    message: 'Document update conflict',
-                    error: true,
+    docUpdateConflictError = (id: string) => ({
+        status: 409,
+        name: 'conflict',
+        message: 'Document update conflict',
+        error: true,
+        id: id,
+        docId: id
+    })
+
+
+    fakeHash4oldRev = (rev: string): string => 
+        (this.getRevInt(rev) + 1).toString() + rev.slice(1)
+
+    checkDocRevWithDBRev = (doc: PouchDBDoc, dbRev: string) => 
+        new Promise((resolve, reject) =>
+            dbRev === doc._rev
+                ?  resolve({
+                    ok: true,
                     id: doc._id,
-                    docId: doc._id
+                    rev: this.fakeHash4oldRev(dbRev)  
                 })
-            )
+                : reject()
+        )
 
-        }
+    doc2SyncAction = (doc: PouchDBMinimalDoc): DocSyncAction => ({
+            state: 'add',
+            id: doc._id,
+            doc: { ...doc, ...{ _rev: '1-XXX' } } // TODO generate new id
+        })
 
+    addDocIfIdIsNew = (doc: PouchDBMinimalDoc) => {
+        return this.checkDocId(doc._id)
+        .then(() => this.getTx())
+        .then(tx => {
+            console.log('trying to put '+doc._id)
+            console.log('IS IT running? '+tx._running)
+            const addAction: DocSyncAction = this.doc2SyncAction(doc);
+            return this.addSyncAction(tx, addAction);
+        })
     }
-        // .then((row: PouchDBRow) => {
-        //     const json = JSON.parse(row.json);
-        //     return Promise.resolve({ 
-        //         ...json,
-        //         ...{
-        //              _id: row.doc_id, 
-        //              _rev: row.rev 
-        //             } 
-        //     });
-        // })   
-        
-        // PouchError {
-        //     status: 400,
-        //     name: 'bad_request',
-        //     message: 'Document must be a JSON object',
-        //     error: true
-        //   }
+                
 
-        // PouchError {
-        //     status: 412,
-        //     name: 'missing_id',
-        //     message: '_id is required for puts',
-        //     error: true
-        //   }
-
-        // PouchError { // no provided _rev???
-        //     status: 404,
-        //     name: 'not_found',
-        //     message: 'missing',
-        //     error: true,
-        //     reason: 'missing',
-        //     docId: 'splinter'
-        //   }
-
-        // PouchError { // 1st put: _rev provided but no doc present
-                // & 2nd put: no _rev provided
-                // & 2nd put wrong _rev provided
-        //     status: 409,
-        //     name: 'conflict',
-        //     message: 'Document update conflict',
-        //     error: true,
-        //     id: 'splinter',
-        //     docId: 'splinter'
-        //   }
+    put(doc: PouchDBMinimalDoc | PouchDBDoc): Promise<any> {
+        return this.putDocActions.find(i => i.test(doc)).action(doc)
+    }
 
         // {  // 1st no _rev provided
         //     ok: true,

@@ -1021,17 +1021,50 @@ var OuchDB = /*#__PURE__*/function () {
         error: true
       }
     }, {
-      test: function test(doc) {
+      test: function test() {
         return true;
       },
       error: undefined
+    }]);
+
+    defineProperty(this, "putDocActions", [{
+      test: function test(doc) {
+        return !!_this.docPutErrors.find(function (i) {
+          return i.test(doc);
+        }).error;
+      },
+      action: function action(doc) {
+        return Promise.reject(_this.docPutErrors.find(function (i) {
+          return i.test(doc);
+        }).error);
+      }
+    }, {
+      test: function test(doc) {
+        return '_rev' in doc;
+      },
+      action: function action(doc) {
+        return _this.getRev(doc._id).then(function (rev) {
+          return _this.checkDocRevWithDBRev(doc, rev);
+        })["catch"](function () {
+          return Promise.reject(_this.docUpdateConflictError(doc._id));
+        });
+      }
+    }, {
+      test: function test(doc) {
+        return !('_rev' in doc);
+      },
+      action: function action(doc) {
+        return _this.addDocIfIdIsNew(doc)["catch"](function () {
+          return Promise.reject(_this.docUpdateConflictError(doc._id));
+        });
+      }
     }]);
 
     defineProperty(this, "allDocsActions", [{
       test: function test(option) {
         return !option;
       },
-      action: function action(option) {
+      action: function action() {
         return _this.getAllDocs().then(function (res) {
           return _this.mapAllDocs2Response(_this.map2AllDoc)(res);
         });
@@ -1040,7 +1073,7 @@ var OuchDB = /*#__PURE__*/function () {
       test: function test(option) {
         return Object.keys(option).length == 1 && JSON.stringify(option) == "{\"include_docs\":true}";
       },
-      action: function action(option) {
+      action: function action() {
         return _this.getAllDocs().then(function (res) {
           return _this.mapAllDocs2Response(_this.map2AllFullDoc)(res);
         });
@@ -1051,11 +1084,8 @@ var OuchDB = /*#__PURE__*/function () {
           "keys" in option && option['keys'].length > 0
         );
       },
-      // action: (option) => this.getMultiDoc('"donatello", "leonardo"').then(res => 
       action: function action(option) {
-        return _this.getMultiDocs(option.keys.map(function (x) {
-          return "\"".concat(x, "\"");
-        }).join(', ')).then(function (rows) {
+        return _this.getMultiDocs(_this.ids2QueryString(option.keys)).then(function (rows) {
           return Promise.resolve({
             total_rows: rows.length,
             offset: 0,
@@ -1081,7 +1111,7 @@ var OuchDB = /*#__PURE__*/function () {
           "keys" in option && option['keys'].length == 0
         );
       },
-      action: function action(option) {
+      action: function action() {
         return _this.getAllDocs().then(function (res) {
           return Promise.resolve({
             total_rows: res.length,
@@ -1090,20 +1120,31 @@ var OuchDB = /*#__PURE__*/function () {
           });
         });
       }
-    }, {//     test: option => !option,
-      //     action: (option) => 
-      // },{            
-      //     test: option => !option,
-      //     action: (option) => 
-      // },{            
-      //     test: option => !option,
-      //     action: (option) => 
-      // },{            
-      //     test: option => !option,
-      //     action: (option) => 
-      // },{            
-      //     test: option => !option,
-      //     action: (option) => 
+    }, {
+      test: function test(option) {
+        return "startkey" in option && "endkey" in option && (!("include_docs" in option) || option['include_docs'] !== true);
+      },
+      action: function action(option) {
+        return _this.getAllDocsWithStartId(option.startkey).then(function (res) {
+          return _this.mapAllDocs2Response(_this.map2AllDoc)(res);
+        });
+      }
+    }, {
+      test: function test(option) {
+        return "startkey" in option && "endkey" in option && "include_docs" in option && option['include_docs'] == true;
+      },
+      action: function action(option) {
+        return _this.getAllDocsWithStartId(option.startkey).then(function (res) {
+          return _this.mapAllDocs2Response(_this.map2AllFullDoc)(res);
+        });
+      }
+    }, {
+      test: function test() {
+        return true;
+      },
+      action: function action() {
+        return Promise.reject({});
+      }
     }]);
 
     defineProperty(this, "getTx", /*#__PURE__*/asyncToGenerator( /*#__PURE__*/regenerator.mark(function _callee() {
@@ -1358,7 +1399,9 @@ var OuchDB = /*#__PURE__*/function () {
             jsonValue = objectWithoutProperties(_action$doc2, ["_id", "_rev"]);
 
         var doc = action.doc,
-            response = objectWithoutProperties(action, ["doc"]);
+            response = objectWithoutProperties(action, ["doc"]); // console.log(tx)
+        // console.log(action)
+
 
         tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, doc._id, doc._rev], function (tx, res) {
           return resolve([tx, _objectSpread(_objectSpread({}, response), {
@@ -1468,9 +1511,9 @@ var OuchDB = /*#__PURE__*/function () {
     defineProperty(this, "initDBtable", function () {
       return new Promise(function (resolve, reject) {
         return _this.db.transaction(function (tx) {
-          return tx.executeSql("CREATE TABLE IF NOT EXISTS \"by-sequence\" (\n                        seq INTEGER PRIMARY KEY,\n                        json TEXT,\n                        deleted INT,\n                        doc_id TEXT unique,\n                        rev TEXT\n                    )", [], function (tx, res) {
+          return tx.executeSql("CREATE TABLE IF NOT EXISTS \"by-sequence\" (\n                        seq INTEGER PRIMARY KEY,\n                        json TEXT,\n                        deleted INT,\n                        doc_id TEXT unique,\n                        rev TEXT\n                    )", [], function () {
             return resolve();
-          }, function (tx, err) {
+          }, function (_, err) {
             return reject(err);
           });
         });
@@ -1501,6 +1544,12 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "ids2QueryString", function (ids) {
+      return ids.map(function (x) {
+        return "\"".concat(x, "\"");
+      }).join(', ');
+    });
+
     defineProperty(this, "getMultiDocs", function (ids) {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
@@ -1528,20 +1577,8 @@ var OuchDB = /*#__PURE__*/function () {
     defineProperty(this, "getAllDocsWithStartId", function (idStart) {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
-          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE id LIKE \"".concat(idStart, "%\""), [], function (_, res) {
+          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id LIKE \"".concat(idStart, "%\""), [], function (_, res) {
             return resolve(res.rows);
-          }, function (_, err) {
-            return reject(err);
-          });
-        });
-      });
-    });
-
-    defineProperty(this, "putDoc", function (id) {
-      return new Promise(function (resolve, reject) {
-        return _this.db.readTransaction(function (tx) {
-          return tx.executeSql("SELECT * FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
-            return resolve(res.rows._array[0]);
           }, function (_, err) {
             return reject(err);
           });
@@ -1553,7 +1590,7 @@ var OuchDB = /*#__PURE__*/function () {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
           return tx.executeSql("SELECT rev FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
-            return resolve(res.rows._array[0]['rev']);
+            return res.rows.length > 0 && 'rev' in res.rows._array[0] ? resolve(res.rows._array[0]['rev']) : reject();
           }, function (_, err) {
             return reject(err);
           });
@@ -1563,14 +1600,51 @@ var OuchDB = /*#__PURE__*/function () {
 
     defineProperty(this, "checkDocId", function (id) {
       return new Promise(function (resolve, reject) {
-        return _this.db.transaction(function (tx) {
-          return tx.executeSql("SELECT id FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (_, res) {
-            return reject("Doc with id: ".concat(id, " already in db!"));
-          }, function (tx, err) {
+        return _this.db.readTransaction(function (tx) {
+          return tx.executeSql("SELECT doc_id FROM \"by-sequence\" WHERE doc_id=\"".concat(id, "\""), [], function (tx, res) {
+            res.rows.length === 0 ? resolve(tx) : reject("Doc with id: ".concat(id, " already in db!"));
+          }, function (tx, _) {
             return resolve(tx);
           });
         });
       });
+    });
+
+    defineProperty(this, "insertDoc", function (tx, doc) {
+      return new Promise(function (resolve, reject) {
+        var id = doc.id,
+            rev = doc.rev,
+            jsonValue = objectWithoutProperties(doc, ["id", "rev"]); // console.log(tx)
+
+
+        console.log(doc);
+        tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, id, '1-YYY'], function (tx, res) {
+          console.log('SUCCESS');
+          console.log(res);
+          resolve(tx);
+        }, function (tx, err) {
+          console.log(err);
+          reject(err);
+        });
+      });
+    });
+
+    defineProperty(this, "getDocResponse", function (row) {
+      var newDoc = JSON.parse(row.json);
+      newDoc['_id'] = row.doc_id;
+      newDoc['_rev'] = row.rev;
+      return newDoc;
+    });
+
+    defineProperty(this, "getDocError", function (id) {
+      return {
+        status: 404,
+        name: 'not_found',
+        message: 'missing',
+        error: true,
+        reason: 'missing',
+        docId: id
+      };
     });
 
     defineProperty(this, "map2AllDoc", function (row) {
@@ -1598,17 +1672,62 @@ var OuchDB = /*#__PURE__*/function () {
     });
 
     defineProperty(this, "mapAllDocs2Response", function (lambda) {
-      return (// mapAllDocs2Response = lambda  => 
-        function (rows) {
-          return _this.getAllDocs().then(function (rows) {
-            return Promise.resolve({
-              total_rows: rows.length,
-              offset: 0,
-              rows: rows._array.map(lambda)
-            });
-          });
-        }
-      );
+      return function (rows) {
+        return Promise.resolve({
+          total_rows: rows.length,
+          offset: 0,
+          rows: rows._array.map(lambda)
+        });
+      };
+    });
+
+    defineProperty(this, "docUpdateConflictError", function (id) {
+      return {
+        status: 409,
+        name: 'conflict',
+        message: 'Document update conflict',
+        error: true,
+        id: id,
+        docId: id
+      };
+    });
+
+    defineProperty(this, "fakeHash4oldRev", function (rev) {
+      return (_this.getRevInt(rev) + 1).toString() + rev.slice(1);
+    });
+
+    defineProperty(this, "checkDocRevWithDBRev", function (doc, dbRev) {
+      return new Promise(function (resolve, reject) {
+        return dbRev === doc._rev ? resolve({
+          ok: true,
+          id: doc._id,
+          rev: _this.fakeHash4oldRev(dbRev)
+        }) : reject();
+      });
+    });
+
+    defineProperty(this, "doc2SyncAction", function (doc) {
+      return {
+        state: 'add',
+        id: doc._id,
+        doc: _objectSpread(_objectSpread({}, doc), {
+          _rev: '1-XXX'
+        }) // TODO generate new id
+
+      };
+    });
+
+    defineProperty(this, "addDocIfIdIsNew", function (doc) {
+      return _this.checkDocId(doc._id).then(function () {
+        return _this.getTx();
+      }).then(function (tx) {
+        console.log('trying to put ' + doc._id);
+        console.log('IS IT running? ' + tx._running);
+
+        var addAction = _this.doc2SyncAction(doc);
+
+        return _this.addSyncAction(tx, addAction);
+      });
     });
 
     this.db = db;
@@ -1648,146 +1767,30 @@ var OuchDB = /*#__PURE__*/function () {
   }, {
     key: "get",
     value: function get(id) {
-      return this.getSingleDoc(id).then(function (row) {
-        var json = JSON.parse(row.json);
-        return Promise.resolve(_objectSpread(_objectSpread({}, json), {
-          _id: row.doc_id,
-          _rev: row.rev
-        }));
-      })["catch"](function (err) {
-        return Promise.reject({
-          status: 404,
-          name: 'not_found',
-          message: 'missing',
-          error: true,
-          reason: 'missing',
-          docId: id
+      var _this4 = this;
+
+      return new Promise(function (resolve, reject) {
+        return _this4.getSingleDoc(id).then(function (row) {
+          return resolve(_this4.getDocResponse(row));
+        })["catch"](function (err) {
+          return reject(_this4.getDocError(id));
         });
-      }); // PouchError { TODO: need an OuchError
-      //     status: 404,
-      //     name: 'not_found',
-      //     message: 'missing',
-      //     error: true,
-      //     reason: 'missing',
-      //     docId: 'splinter'
-      //   }
+      });
     }
   }, {
     key: "allDocs",
     value: function allDocs(option) {
       return this.allDocsActions.find(function (i) {
         return i.test(option);
-      }).action(option); // return new Promise((resolve, reject) => 
-      //     this.getAllDocs()
-      //     .then(rows => {
-      //         if(!option){
-      //             const idNRevs = {
-      //                 total_rows: rows.length,
-      //                 offset: 0,
-      //                 rows: rows._array.map<AllIdnRevRow>(this.map2AllDoc)
-      //             };
-      //             resolve(idNRevs);
-      //         } else {
-      //             const idNRevs = {
-      //                 total_rows: rows.length,
-      //                 offset: 0,
-      //                 rows: rows._array.map<AllFullDocsRow>(this.map2AllFullDoc)
-      //             };
-      //             resolve(idNRevs);
-      //         }
-      // })
-      // )
+      }).action(option);
     }
   }, {
     key: "put",
     value: function put(doc) {
-      var _this4 = this;
-
-      var typeCheck = this.docPutErrors.find(function (i) {
+      return this.putDocActions.find(function (i) {
         return i.test(doc);
-      });
-
-      if (!!typeCheck.error) {
-        return Promise.reject(typeCheck.error);
-      } else if ('_rev' in doc) {
-        return this.getRev(doc._id).then(function (rev) {
-          return rev === doc._rev ? Promise.resolve({
-            ok: true,
-            id: doc._id,
-            rev: (_this4.getRevInt(rev) + 1).toString() + rev.slice(1)
-          }) : Promise.reject();
-        })["catch"](function (_) {
-          return Promise.reject({
-            status: 409,
-            name: 'conflict',
-            message: 'Document update conflict',
-            error: true,
-            id: doc._id,
-            docId: doc._id
-          });
-        });
-      } else {
-        return this.checkDocId(doc._id).then(function (tx) {
-          var addAction = {
-            state: 'add',
-            id: doc._id,
-            doc: _objectSpread(_objectSpread({}, doc), {
-              _rev: '1-XXXXX'
-            })
-          };
-          return _this4.addSyncAction(tx, addAction);
-        })["catch"](function () {
-          return Promise.reject({
-            status: 409,
-            name: 'conflict',
-            message: 'Document update conflict',
-            error: true,
-            id: doc._id,
-            docId: doc._id
-          });
-        });
-      }
-    } // .then((row: PouchDBRow) => {
-    //     const json = JSON.parse(row.json);
-    //     return Promise.resolve({ 
-    //         ...json,
-    //         ...{
-    //              _id: row.doc_id, 
-    //              _rev: row.rev 
-    //             } 
-    //     });
-    // })   
-    // PouchError {
-    //     status: 400,
-    //     name: 'bad_request',
-    //     message: 'Document must be a JSON object',
-    //     error: true
-    //   }
-    // PouchError {
-    //     status: 412,
-    //     name: 'missing_id',
-    //     message: '_id is required for puts',
-    //     error: true
-    //   }
-    // PouchError { // no provided _rev???
-    //     status: 404,
-    //     name: 'not_found',
-    //     message: 'missing',
-    //     error: true,
-    //     reason: 'missing',
-    //     docId: 'splinter'
-    //   }
-    // PouchError { // 1st put: _rev provided but no doc present
-    // & 2nd put: no _rev provided
-    // & 2nd put wrong _rev provided
-    //     status: 409,
-    //     name: 'conflict',
-    //     message: 'Document update conflict',
-    //     error: true,
-    //     id: 'splinter',
-    //     docId: 'splinter'
-    //   }
-    // {  // 1st no _rev provided
+      }).action(doc);
+    } // {  // 1st no _rev provided
     //     ok: true,
     //     id: 'splinter',
     //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
