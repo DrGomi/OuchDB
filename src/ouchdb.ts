@@ -50,7 +50,7 @@ type Rows2DocsMapper = (row: PouchDBRow) => AllDocsRow;
 
 export class OuchDB {
     db: WebSQLDatabase;
-    dbName: string;
+    // dbName: string;
     httpClient: HTTPClient;
 
     takeSyncActions = {
@@ -183,7 +183,7 @@ export class OuchDB {
 
     constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
-        this.dbName = db['_db']['_db']['filename'];
+        // this.dbName = db['_db']['_db']['filename'];
         this.httpClient = httpClient;
         // this.initDBtable()
     }
@@ -493,7 +493,7 @@ export class OuchDB {
 
 
     initDBtable = (): Promise<void> =>
-        new Promise((resolve, reject) => 
+        new Promise(resolve => 
             this.db.transaction(tx =>  
                 tx.executeSql(
                     `CREATE TABLE IF NOT EXISTS "by-sequence" (
@@ -505,7 +505,7 @@ export class OuchDB {
                     )`,
                     [],
                     () => resolve(),
-                    (_, err) => reject(err)
+                    (_, err) => resolve()
                 )
             )
         );
@@ -626,17 +626,23 @@ export class OuchDB {
             )
     });
 
+    count2InfoObject = (docCount: number): InfoObject => ({
+        doc_count: docCount,
+        update_seq: docCount,
+        websql_encoding: 'UTF-8',
+        db_name: this.db['_db']['_db']['filename'],
+        auto_compaction: false,
+        adapter: 'websql'
+    })
+
     info(): Promise<InfoObject> {
         return this.getDocCount()
-        .then(docCount => ({
-                doc_count: docCount,
-                update_seq: docCount,
-                websql_encoding: 'UTF-8',
-                db_name: this.db['_db']['_db']['filename'],
-                auto_compaction: false,
-                adapter: 'websql'
-            })
-        );
+        .then(this.count2InfoObject)
+        .catch(() => // no recursion...just try once!
+            this.initDBtable()
+            .then(() => this.getDocCount())
+            .then(this.count2InfoObject)
+        )
     }
 
     getDocResponse = (row: PouchDBRow): PouchDBDoc => {

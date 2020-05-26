@@ -19,7 +19,8 @@ const sqliteNames = [
   'turtles_load_1',
   'turtles_load_2',
   'turtles_load_3',
-  'turtles_load_4'
+  'turtles_load_4',
+  'turtles_load_5'
 ];
 
 afterAll(() =>  {
@@ -100,5 +101,16 @@ it('show same output from pouch.info() & ouchdb.info()', () => {
     ]))
     .then(infos => {
         expect(infos[0]).toEqual(infos[1]);
+    })
+});
+
+it('inits "by-sequence" table via ouchdb.info() if neccessary', () => {
+    expect.assertions(1);
+    const webSQLDB = openDatabase(sqliteNames[4], '1', 'blah', 1);
+    const ouch = new OuchDB(webSQLDB, caller);
+    return ouch.info()
+    .then(infos => {
+        console.log(infos)
+        expect(infos).toBeDefined();
     })
 });

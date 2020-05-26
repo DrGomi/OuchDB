@@ -962,14 +962,13 @@ function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { va
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
 // }
 var OuchDB = /*#__PURE__*/function () {
+  // dbName: string;
   function OuchDB(db, httpClient) {
     var _this = this;
 
     classCallCheck(this, OuchDB);
 
     defineProperty(this, "db", void 0);
-
-    defineProperty(this, "dbName", void 0);
 
     defineProperty(this, "httpClient", void 0);
 
@@ -1509,12 +1508,12 @@ var OuchDB = /*#__PURE__*/function () {
     });
 
     defineProperty(this, "initDBtable", function () {
-      return new Promise(function (resolve, reject) {
+      return new Promise(function (resolve) {
         return _this.db.transaction(function (tx) {
           return tx.executeSql("CREATE TABLE IF NOT EXISTS \"by-sequence\" (\n                        seq INTEGER PRIMARY KEY,\n                        json TEXT,\n                        deleted INT,\n                        doc_id TEXT unique,\n                        rev TEXT\n                    )", [], function () {
             return resolve();
           }, function (_, err) {
-            return reject(err);
+            return resolve();
           });
         });
       });
@@ -1629,6 +1628,17 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "count2InfoObject", function (docCount) {
+      return {
+        doc_count: docCount,
+        update_seq: docCount,
+        websql_encoding: 'UTF-8',
+        db_name: _this.db['_db']['_db']['filename'],
+        auto_compaction: false,
+        adapter: 'websql'
+      };
+    });
+
     defineProperty(this, "getDocResponse", function (row) {
       var newDoc = JSON.parse(row.json);
       newDoc['_id'] = row.doc_id;
@@ -1730,8 +1740,8 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    this.db = db;
-    this.dbName = db['_db']['_db']['filename'];
+    this.db = db; // this.dbName = db['_db']['_db']['filename'];
+
     this.httpClient = httpClient; // this.initDBtable()
   } // resolves execution context from db
 
@@ -1753,15 +1763,12 @@ var OuchDB = /*#__PURE__*/function () {
     value: function info() {
       var _this3 = this;
 
-      return this.getDocCount().then(function (docCount) {
-        return {
-          doc_count: docCount,
-          update_seq: docCount,
-          websql_encoding: 'UTF-8',
-          db_name: _this3.db['_db']['_db']['filename'],
-          auto_compaction: false,
-          adapter: 'websql'
-        };
+      return this.getDocCount().then(this.count2InfoObject)["catch"](function () {
+        return (// no recursion...just try once!
+          _this3.initDBtable().then(function () {
+            return _this3.getDocCount();
+          }).then(_this3.count2InfoObject)
+        );
       });
     }
   }, {
