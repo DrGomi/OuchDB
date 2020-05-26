@@ -1486,7 +1486,19 @@ var OuchDB = /*#__PURE__*/function () {
 
     defineProperty(this, "getDumpRows", function (dump) {
       var dumps = dump.split('\n');
-      return dumps.length === 3 ? Promise.resolve(JSON.parse(dumps[1])['docs']) : _this.httpClient.get(dump).then(function (res) {
+      console.log(dumps.length);
+      return dumps.length === 3 ? // ? Promise.resolve(JSON.parse(dumps[1])['docs'])
+      new Promise(function (resolve, reject) {
+        try {
+          console.log(dumps[1]);
+          var dumpDocs = JSON.parse(dumps[1])['docs'];
+          resolve(dumpDocs);
+        } catch (err) {
+          console.log('ERROR ', err);
+          reject(err);
+        }
+      }) : _this.httpClient.get(dump).then(function (res) {
+        console.log('GOT ', res);
         return _this.getDumpRows(res);
       });
     });
@@ -1730,8 +1742,8 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    this.db = db;
-    this.dbName = db['_db']['_db']['filename'];
+    this.db = db; // this.dbName = db['_db']['_db']['filename'];
+
     this.httpClient = httpClient; // this.initDBtable()
   } // resolves execution context from db
 
@@ -1741,10 +1753,17 @@ var OuchDB = /*#__PURE__*/function () {
     value: function load(dump) {
       var _this2 = this;
 
-      return this.initDBtable().then(function () {
-        return _this2.getDumpRows(dump);
-      }).then(function (dumpRows) {
-        return _this2.insertDumpRows(dumpRows);
+      return new Promise(function (resolve, reject) {
+        return _this2.initDBtable().then(function () {
+          return _this2.getDumpRows(dump);
+        }).then(function (dumpRows) {
+          return _this2.insertDumpRows(dumpRows);
+        }).then(function () {
+          return resolve();
+        })["catch"](function (err) {
+          console.log(err);
+          reject(err);
+        });
       });
     } // checks if dump string contains dump or just a url to dump file...
 

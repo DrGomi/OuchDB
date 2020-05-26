@@ -183,7 +183,7 @@ export class OuchDB {
 
     constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
-        this.dbName = db['_db']['_db']['filename'];
+        // this.dbName = db['_db']['_db']['filename'];
         this.httpClient = httpClient;
         // this.initDBtable()
     }
@@ -469,16 +469,36 @@ export class OuchDB {
                 .then(actions => this.syncAllActions2DB(actions));
 
     load(dump: string): Promise<TxSyncActionSuccess[]> {
-        return this.initDBtable()
+        return new Promise((resolve, reject) => this.initDBtable()
         .then(() => this.getDumpRows(dump))
         .then((dumpRows: PouchDBDoc[]) => this.insertDumpRows(dumpRows))
+        .then(() => resolve())
+        .catch(err => {
+            console.log(err);
+            reject(err);
+        })
+        )
     }
     // checks if dump string contains dump or just a url to dump file...
     getDumpRows = (dump : string): Promise<PouchDBDoc[]> => {
         const dumps = dump.split('\n');
+        console.log(dumps.length)
         return (dumps.length === 3)
-            ? Promise.resolve(JSON.parse(dumps[1])['docs'])
-            : this.httpClient.get(dump).then(res => this.getDumpRows(res));
+        // ? Promise.resolve(JSON.parse(dumps[1])['docs'])
+        ? new Promise((resolve, reject) => {
+            try {
+                    console.log(dumps[1])
+                    const dumpDocs = JSON.parse(dumps[1])['docs'];
+                    resolve(dumpDocs);
+                } catch(err) {
+                    console.log('ERROR ',err);
+                    reject(err)
+                }
+            })
+            : this.httpClient.get(dump).then(res => {
+                console.log('GOT ',res);
+                return this.getDumpRows(res)
+            });
     }
 
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
