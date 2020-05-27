@@ -413,10 +413,10 @@ export class OuchDB {
     );
 
     getRemoteDoc = (docID: string): any =>
-            this.httpClient.get(`http://127.0.0.1:3000/${docID}`)
+            this.httpClient.getJSON(`http://127.0.0.1:3000/${docID}`)
 
     getAllRemoteDocs = ():Promise<CouchAllFullDocsResponse> => // need to change the endpoint
-        this.httpClient.get(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
+        this.httpClient.getJSON(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
 
     convertDoc2Map = (acc: PouchDocMap, row: CouchFullDocsRow): PouchDocMap => {
         acc[row.id] = row.doc;
@@ -478,7 +478,7 @@ export class OuchDB {
         const dumps = dump.split('\n');
         return (dumps.length === 3)
             ? Promise.resolve(JSON.parse(dumps[1])['docs'])
-            : this.httpClient.get(dump).then(res => this.getDumpRows(res));
+            : this.httpClient.getText(dump).then(res => this.getDumpRows(res));
     }
 
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
@@ -733,8 +733,8 @@ export class OuchDB {
         return this.checkDocId(doc._id)
         .then(() => this.getTx())
         .then(tx => {
-            console.log('trying to put '+doc._id)
-            console.log('IS IT running? '+tx._running)
+            // console.log('trying to put '+doc._id)
+            // console.log('IS IT running? '+tx._running)
             const addAction: DocSyncAction = this.doc2SyncAction(doc);
             return this.addSyncAction(tx, addAction);
         })

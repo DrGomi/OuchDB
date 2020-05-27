@@ -3,24 +3,22 @@ const mockCouchDB = require('./test_utils')['mockCouchDB'];
 const dump = require('./test_utils')['turtleDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 const getTables = require('./test_utils')['getTables'];
+const caller = require('./test_utils')['caller']; 
+const fs = require('fs');
 
 const openDatabase = require('websql');
-// const PouchDB = require('pouchdb');
-// PouchDB.plugin(require('pouchdb-load'));
-// PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 
-const fs = require('fs');
 
 mockCouchDB.listen(3000, '127.0.0.22');
 
-const caller = require('./test_utils')['caller']; 
 
 const sqliteNames = [
   'turtles_load_1',
   'turtles_load_2',
   'turtles_load_3',
   'turtles_load_4',
-  'turtles_load_5'
+  'turtles_load_5',
+  'turtles_load_6'
 ];
 
 afterAll(() =>  {
@@ -46,11 +44,31 @@ it('loads dump into pouchdb', () => {
     })
 });
 
-it('initializes "by-sequence" table in SQLite by calling "load()" on OuchDB', () => {
+it('initializes "by-sequence" table by loading dump string via "load()"', () => {
     expect.assertions(3);
 
-    
     const webSQLDB = openDatabase(sqliteNames[1], '1', 'blah', 1);
+    return getTables(webSQLDB)
+    .then(allTables => {
+        const tableNb = allTables.rows.length;
+        expect(tableNb).toBe(0);
+        const ouch = new OuchDB(webSQLDB, caller);
+        return ouch.load(dump)
+    })
+    .then(() => getTables(webSQLDB))
+    .then(allTables => {
+        const tableNames = allTables.rows._array;
+        expect(tableNames[0].tbl_name).toBe("by-sequence");
+        expect(tableNames.length).toBe(1);
+        return getTables(webSQLDB)
+    })
+    .catch(err => console.log('ERROR: ', err))
+});
+
+it('initializes "by-sequence" table by loading dump string via "load()"', () => {
+    expect.assertions(3);
+
+    const webSQLDB = openDatabase(sqliteNames[2], '1', 'blah', 1);
     return getTables(webSQLDB)
     .then(allTables => {
         const tableNb = allTables.rows.length;
@@ -70,7 +88,7 @@ it('initializes "by-sequence" table in SQLite by calling "load()" on OuchDB', ()
 
 it('inserts all rows from provided dump string into "by-sequence" table ', () => {
     expect.assertions(6);
-    const webSQLDB = openDatabase(sqliteNames[2], '1', 'blah', 1);
+    const webSQLDB = openDatabase(sqliteNames[3], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
@@ -93,7 +111,7 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
 
 it('show same output from pouch.info() & ouchdb.info()', () => {
     expect.assertions(1);
-    const [ pouch, ouch ] = dbSetup(sqliteNames[3]);
+    const [ pouch, ouch ] = dbSetup(sqliteNames[4]);
     return pouch.load(dump)
     .then(() => Promise.all([
         pouch.info(),
@@ -106,11 +124,11 @@ it('show same output from pouch.info() & ouchdb.info()', () => {
 
 it('inits "by-sequence" table via ouchdb.info() if neccessary', () => {
     expect.assertions(1);
-    const webSQLDB = openDatabase(sqliteNames[4], '1', 'blah', 1);
+    const webSQLDB = openDatabase(sqliteNames[5], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.info()
     .then(infos => {
-        console.log(infos)
+        // console.log(infos)
         expect(infos).toBeDefined();
     })
 });

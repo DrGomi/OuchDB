@@ -69,7 +69,7 @@ it('maps all rows from "by-sequence" into an array', () => {
     .then(() => ouch.getAllRows("by-sequence"))
     .then(txNrs => {
         const rowNb = ouch.mapDocRows(txNrs[1]).length;
-        console.log(ouch.mapDocRows(txNrs[1]))
+        // console.log(ouch.mapDocRows(txNrs[1]))
         expect(rowNb).toEqual(10);
         return ouch.pruneOldLocalRevs()
     })
