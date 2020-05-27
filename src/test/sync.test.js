@@ -5,7 +5,7 @@ const dbSetup = require('./test_utils')['dbSetup'];
 
 const fs = require('fs');
 
-const couchDBPort = 3000;
+const couchDBPort = 3300;
 const couchDBIP = '127.0.0.11'
 const remoteDB = `http://${couchDBIP}:${couchDBPort}`;
 mockCouchDB.listen(couchDBPort , couchDBPort);
@@ -82,9 +82,29 @@ it('compares local with remote docs & returns list with sync actions', () => {
     )
     .then(allDBDocs => {
         const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows);
-        console.log(allDBDocs)
-        console.log(onlyRows)
+        // console.log(allDBDocs)
+        // console.log(onlyRows)
         const docDiff = ouch.compareWithRemote(onlyRows);
+        expect(docDiff.length).toEqual(4);
+        expect(docDiff).toContainEqual({ state: 'update', id: 'donatello' });
+        expect(docDiff).toContainEqual({ state: 'update', id: 'michelangelo' });
+        expect(docDiff).toContainEqual({ state: 'delete', id: 'raphael' });
+        expect(docDiff).toContainEqual({ state: 'add', id: 'splinter' });
+        expect(docDiff.map(i => i.id)).not.toContainEqual('leonardo');
+    })
+  });
+
+it('compares local with remote docs & returns list with sync actions', () => {
+    expect.assertions(6);
+
+    const [ pouch, ouch ] = dbSetup(sqliteNames[2]);
+    return pouch.load(dump)
+    .then(() => ouch.diffDocsWithRemote(remoteDB))
+    .then(docDiff => {
+        // const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows);
+        // // console.log(allDBDocs)
+        // // console.log(onlyRows)
+        // const docDiff = ouch.compareWithRemote(onlyRows);
         expect(docDiff.length).toEqual(4);
         expect(docDiff).toContainEqual({ state: 'update', id: 'donatello' });
         expect(docDiff).toContainEqual({ state: 'update', id: 'michelangelo' });

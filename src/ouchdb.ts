@@ -319,10 +319,33 @@ export class OuchDB {
 
 
     replicateFrom(remoteDB: string) {
+        // compares local with remote docs & returns list with sync actions
+        return this.diffDocsWithRemote(remoteDB)
+        // fetches document bodies & concats these to add/update-actions
+        .then(actions => actions.length == 0            
+            ? Promise.resolve([] as TxSyncActionSuccess[])
+            : this.enrichSyncActionsWithDocs(remoteDB, actions)
+                  .then(docsActions => this.syncAllActions2DB(docsActions))
+        );
+        // .then(actions => this.getRemoteDocs4SyncActions(remoteDB, actions))
+        // .then(docActions => this.processSyncActions(remoteDB, docActions))
+    }
+
+    diffDocsWithRemote(remoteDB: string): Promise<DocSyncAction[]> {
         return Promise.all([
             this.getLocalAllDocs(),
             this.getAllRemoteRevs(remoteDB)
         ])
+        .then(allDocs => {
+            console.log(allDocs);
+            // get rid of any design_docs
+            const onlyRows: AllDocRowsTuple = [
+                this.getCleanAllDocRows(allDocs[0]),
+                this.getCleanAllDocRows(allDocs[1])
+            ];
+            const docDiff = this.compareWithRemote(onlyRows);
+            return docDiff;
+        })
     }
 
     // resolves all local rows transformed into couchdb _all_docs response 
