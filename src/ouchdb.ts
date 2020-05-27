@@ -413,10 +413,10 @@ export class OuchDB {
     );
 
     getRemoteDoc = (docID: string): any =>
-            this.httpClient.getJSON(`http://127.0.0.1:3000/${docID}`)
+            this.httpClient.get(`http://127.0.0.1:3000/${docID}`)
 
     getAllRemoteDocs = ():Promise<CouchAllFullDocsResponse> => // need to change the endpoint
-        this.httpClient.getJSON(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
+        this.httpClient.get(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
 
     convertDoc2Map = (acc: PouchDocMap, row: CouchFullDocsRow): PouchDocMap => {
         acc[row.id] = row.doc;
@@ -471,15 +471,31 @@ export class OuchDB {
     load(dump: string): Promise<TxSyncActionSuccess[]> {
         return this.initDBtable()
         .then(() => this.getDumpRows(dump))
+        // .catch(err => console.log('WHAAT? ', err))
         .then((dumpRows: PouchDBDoc[]) => this.insertDumpRows(dumpRows))
     }
     // checks if dump string contains dump or just a url to dump file...
-    getDumpRows = (dump : string): Promise<PouchDBDoc[]> => {
-        const dumps = dump.split('\n');
-        return (dumps.length === 3)
-            ? Promise.resolve(JSON.parse(dumps[1])['docs'])
-            : this.httpClient.getText(dump).then(res => this.getDumpRows(res));
+    getDumpRows = (dump : string, fetchtry = 0): Promise<PouchDBDoc[]> => {
+        if(fetchtry < 2){
+            const dumps = dump.split('\n');
+            return (dumps.length === 3)
+                ? this.try2ParseDump(dumps[1])
+                : this.httpClient.get(dump)
+                    .then(res => this.getDumpRows(res, ++fetchtry));
+        } else {
+            return Promise.reject();
+        }
     }
+
+    try2ParseDump = (dump: string): Promise<PouchDBDoc[]> => 
+        new Promise((resolve, reject) => {
+            try{
+                const docs = JSON.parse(dump)['docs'];
+                resolve(docs);
+            } catch {
+                reject();
+            }
+        })
 
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
         this.getTx().then(tx => {

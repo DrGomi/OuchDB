@@ -18,7 +18,8 @@ const sqliteNames = [
   'turtles_load_3',
   'turtles_load_4',
   'turtles_load_5',
-  'turtles_load_6'
+  'turtles_load_6',
+  'turtles_load_7'
 ];
 
 afterAll(() =>  {
@@ -65,7 +66,7 @@ it('initializes "by-sequence" table by loading dump string via "load()"', () => 
     .catch(err => console.log('ERROR: ', err))
 });
 
-it('initializes "by-sequence" table by loading dump string via "load()"', () => {
+it('initializes "by-sequence" table by fetching with http call into dump string via "load()"', () => {
     expect.assertions(3);
 
     const webSQLDB = openDatabase(sqliteNames[2], '1', 'blah', 1);
@@ -74,7 +75,7 @@ it('initializes "by-sequence" table by loading dump string via "load()"', () => 
         const tableNb = allTables.rows.length;
         expect(tableNb).toBe(0);
         const ouch = new OuchDB(webSQLDB, caller);
-        return ouch.load(dump)
+        return ouch.load('http://127.0.0.22:3000/turtles')
     })
     .then(() => getTables(webSQLDB))
     .then(allTables => {
@@ -86,7 +87,7 @@ it('initializes "by-sequence" table by loading dump string via "load()"', () => 
     .catch(err => console.log('ERROR: ', err))
 });
 
-it('inserts all rows from provided dump string into "by-sequence" table ', () => {
+it('inserts all rows from provided dump string via  "load()" "by-sequence" table ', () => {
     expect.assertions(6);
     const webSQLDB = openDatabase(sqliteNames[3], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
@@ -109,9 +110,32 @@ it('inserts all rows from provided dump string into "by-sequence" table ', () =>
     })
 });
 
+it('inserts all rows from provided dump string via  "load()" "by-sequence" table ', () => {
+    expect.assertions(6);
+    const webSQLDB = openDatabase(sqliteNames[4], '1', 'blah', 1);
+    const ouch = new OuchDB(webSQLDB, caller);
+    return ouch.getAllRows()
+    .catch(error => {
+        // console.log(error);
+        expect(error).toBeDefined();
+        return ouch.load(dump)
+    })
+    .then(() => ouch.getAllRows())
+    .then(allRows => {
+        const rows = allRows[1].rows._array;
+        // console.log(rows)
+        const row_ids = rows.map(r => r.doc_id);
+        expect(rows.length).toBe(4);
+        expect(row_ids).toContain('donatello');
+        expect(row_ids).toContain('michelangelo');
+        expect(row_ids).toContain('leonardo');
+        expect(row_ids).toContain('raphael');
+    })
+});
+
 it('show same output from pouch.info() & ouchdb.info()', () => {
     expect.assertions(1);
-    const [ pouch, ouch ] = dbSetup(sqliteNames[4]);
+    const [ pouch, ouch ] = dbSetup(sqliteNames[5]);
     return pouch.load(dump)
     .then(() => Promise.all([
         pouch.info(),
@@ -124,7 +148,7 @@ it('show same output from pouch.info() & ouchdb.info()', () => {
 
 it('inits "by-sequence" table via ouchdb.info() if neccessary', () => {
     expect.assertions(1);
-    const webSQLDB = openDatabase(sqliteNames[5], '1', 'blah', 1);
+    const webSQLDB = openDatabase(sqliteNames[6], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.info()
     .then(infos => {

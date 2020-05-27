@@ -109,8 +109,9 @@ export interface AllDocsResponse {
 export type couchResponse = AllFullDocsRow | AllDocsIdnRevResponse | AllFullDocsResponse // | TurtleAllFullDocsResponse;
 
 export interface HTTPClient {
-    getJSON: (url: string) => Promise<any>;
-    getText: (url: string) => Promise<string>;
+    get: (url: string) => Promise<any>;
+    // getJSON: (url: string) => Promise<any>;
+    // getText: (url: string) => Promise<string>;
 }
 
 export type DocSyncState = 'delete' | 'update' | 'add';

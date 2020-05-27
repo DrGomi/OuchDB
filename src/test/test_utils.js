@@ -45,27 +45,19 @@ const router = {
 module.exports.mockCouchDB = http.createServer((req, res) => {
     // Set a response type of plain text for the response
     const response = router[req.url.slice(1)];
-    if(!!response && response !== 'trutles'){
+    if(!!response){
         res.writeHead(200, {'Content-Type': 'json'});
         res.write(JSON.stringify(response));
         res.end();
-    } else if (!!response && response === 'trutles'){
-        res.writeHead(404, {'Content-Type': 'text/plain'});
-        res.write(response);
-        res.end();
+    // } else if (!!response && response === 'turtles'){
+    //     res.writeHead(404, {'Content-Type': 'text/plain charset=utf-8'});
+    //     res.write(JSON.stringify(response));
+    //     res.end();
     } else {
         res.writeHead(404, {'Content-Type': 'json'});
         res.end('BAD REQUEST!\n');
     }
 });
-
-module.exports.fetcher = { 
-    get: url => new Promise((resolve, reject) => 
-        fetch(url)
-        .then(res => resolve(res.json()))
-        .catch(err => reject('error', err))
-    )
-};
 
 module.exports.turtleDump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
 {"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
@@ -73,17 +65,24 @@ module.exports.turtleDump = `{"version":"1.2.6","db_type":"http","start_time":"2
 
 
 const caller = { 
-    getJSON: url => new Promise((resolve, reject) => 
+    get: url => new Promise((resolve, reject) => 
         fetch(url)
         .then(res => resolve(res.json()))
         .catch(err => reject('error', err))
     ),
-    getText: url => new Promise((resolve, reject) => 
-        fetch(url)
-        .then(res => resolve(res.text()))
-        .catch(err => reject('error', err))
-    )
+    // getText: url => new Promise((resolve, reject) => 
+    //     fetch(url)
+    //     .then(res => res.json())
+    //     .then(txt => {
+    //         // console.log('GOT TEXT ',txt)
+    //         resolve(txt);
+    //     })
+    //     .catch(err => reject('error', err))
+    // )
 };
+
+// module.exports.fetcher = caller
+
 
 module.exports.caller = caller; 
 
