@@ -5,11 +5,15 @@ const dbSetup = require('./test_utils')['dbSetup'];
 
 const fs = require('fs');
 
-mockCouchDB.listen(3000, '127.0.0.1');
+const couchDBPort = 3000;
+const couchDBIP = '127.0.0.11'
+const remoteDB = `http://${couchDBIP}:${couchDBPort}`;
+mockCouchDB.listen(couchDBPort , couchDBPort);
+
 
 
 const allRemoteDocs = {
-    total_rows: 6,
+    total_rows: 5,
     offset: 0,
     rows: [
     { id:"_design/access", key:"_design/access", value: { rev:"1-451e825a7ec62a68a2a7576cd3d14ad2" }},
@@ -72,11 +76,14 @@ it('compares local with remote docs & returns list with sync actions', () => {
     return pouch.load(dump)
     .then(() => Promise.all([
         ouch.getLocalAllDocs(),
-        Promise.resolve(allRemoteDocs)
+        ouch.getAllRemoteRevs(remoteDB)
+        // Promise.resolve(allRemoteDocs)
       ])
     )
     .then(allDBDocs => {
         const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows);
+        console.log(allDBDocs)
+        console.log(onlyRows)
         const docDiff = ouch.compareWithRemote(onlyRows);
         expect(docDiff.length).toEqual(4);
         expect(docDiff).toContainEqual({ state: 'update', id: 'donatello' });
@@ -92,8 +99,9 @@ it('requests doc from remote endpoint', () => {
     expect.assertions(2);
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[3]);
-    return pouch.load(dump)
-    .then(() => ouch.getRemoteDoc('splinter'))
+    // return pouch.load(dump)
+    // .then(() => ouch.getRemoteDoc('splinter'))
+    return ouch.getRemoteDoc(remoteDB,'splinter')
     .then(res => expect(res._id).toMatch('splinter'))
     .then(() =>
         expect(ouch.getRemoteDoc('mickey'))
@@ -104,8 +112,8 @@ it('requests doc from remote endpoint', () => {
 it('requests all_docs from remote endpoint', () => {
     expect.assertions(1);
     const [ pouch, ouch ] = dbSetup(sqliteNames[4]);
-    return pouch.load(dump)
-    .then(() =>  ouch.getAllRemoteDocs())
+    // return pouch.load(dump)
+    return ouch.getAllRemoteDocs(remoteDB)
     .then(res => {
       const remoteRows = res.rows.filter(row => row.id !== '_design/access');
       expect(remoteRows.length).toBe(4);
@@ -123,7 +131,7 @@ it('requests all_docs from remote endpoint', () => {
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[5]);
     return pouch.load(dump)
-    .then(() => ouch.getRemoteDocs4SyncActions(docActions))
+    .then(() => ouch.getRemoteDocs4SyncActions(remoteDB, docActions))
     .then(eActions =>  {
       expect(eActions.length).toBe(4);
       expect(eActions.find(x => x.id == 'donatello').doc).toBeDefined()
@@ -152,7 +160,7 @@ it('requests all_docs from remote endpoint', () => {
       expect(!!rows.find(x => x.doc_id == 'raphael')).toBeTruthy();
       expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
 
-      return ouch.processSyncActions(docActions);
+      return ouch.processSyncActions(remoteDB, docActions);
     })
     .then(() => ouch.getAllRows())
     .then(allRows => {
@@ -178,9 +186,9 @@ it('requests all_docs from remote endpoint', () => {
       expect(rows.find(x => x.doc_id == 'michelangelo').json).toMatch('"weapon":"nunchaku"');
       expect(!!rows.find(x => x.doc_id == 'raphael')).toBeTruthy();
       expect(!!rows.find(x => x.doc_id == 'splinter')).not.toBeTruthy();
-      return ouch.getRemoteDocs4SyncActions(docActions);
+      return ouch.getRemoteDocs4SyncActions(remoteDB, docActions);
     })
-    .then(actions => ouch.processSyncActions(actions))
+    .then(actions => ouch.processSyncActions(remoteDB, actions))
     .then(() => ouch.getAllRows())
     .then(allRows => {
       // console.log(allRows[1].rows._array);

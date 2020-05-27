@@ -317,6 +317,14 @@ export class OuchDB {
             )
         );
 
+
+    replicateFrom(remoteDB: string) {
+        return Promise.all([
+            this.getLocalAllDocs(),
+            this.getAllRemoteRevs(remoteDB)
+        ])
+    }
+
     // resolves all local rows transformed into couchdb _all_docs response 
     getLocalAllDocs = (): Promise<AllDocsIdnRevResponse> => 
         this.getAllRows()
@@ -412,11 +420,14 @@ export class OuchDB {
             )
     );
 
-    getRemoteDoc = (docID: string): any =>
-            this.httpClient.get(`http://127.0.0.1:3000/${docID}`)
+    getRemoteDoc = (remoteDB: string, docID: string): any =>
+            this.httpClient.get(`${remoteDB}/${docID}`)
 
-    getAllRemoteDocs = ():Promise<CouchAllFullDocsResponse> => // need to change the endpoint
-        this.httpClient.get(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
+    getAllRemoteDocs = (remoteDB: string):Promise<CouchAllFullDocsResponse> => // need to change the endpoint
+        this.httpClient.get(`${remoteDB}/_all_docs?include_docs=true`)
+
+    getAllRemoteRevs = (remoteDB: string):Promise<CouchAllFullDocsResponse> => // need to change the endpoint
+        this.httpClient.get(`${remoteDB}/_all_docs`)
 
     convertDoc2Map = (acc: PouchDocMap, row: CouchFullDocsRow): PouchDocMap => {
         acc[row.id] = row.doc;
@@ -430,8 +441,8 @@ export class OuchDB {
             : action;
 
     // SOQ/18004296/how-to-bulk-fetch-by-ids-in-couchdb-without-creating-a-view
-    getRemoteDocs4SyncActions = (actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
-        this.getAllRemoteDocs()
+    getRemoteDocs4SyncActions = (remoteDB: string, actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
+        this.getAllRemoteDocs(remoteDB)
         .then((res: CouchAllFullDocsResponse) => {
             const docsMap: PouchDocMap = res.rows
                 .filter(row => row.id !== '_design/access')
@@ -445,9 +456,9 @@ export class OuchDB {
         })
 
         // test: do actions require another get '_all_docs' request?
-    enrichSyncActionsWithDocs = (actions: DocSyncAction[]): Promise<DocSyncAction[]> => (
+    enrichSyncActionsWithDocs = (remoteDB: string, actions: DocSyncAction[]): Promise<DocSyncAction[]> => (
         !!actions.find(act => (act.state === 'update' || act.state === 'add'))
-            ? this.getRemoteDocs4SyncActions(actions)
+            ? this.getRemoteDocs4SyncActions(remoteDB, actions)
             : Promise.resolve(actions)
         // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
         // (actions[0].state === 'update' || actions[0].state === 'add') 
@@ -462,10 +473,10 @@ export class OuchDB {
             Promise.all(this.syncAction2DB(tx, actions)) 
         )
 
-    processSyncActions = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
+    processSyncActions = (remoteDB: string, actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
         actions.length == 0            
             ? Promise.resolve([] as TxSyncActionSuccess[])
-            : this.enrichSyncActionsWithDocs(actions)
+            : this.enrichSyncActionsWithDocs(remoteDB, actions)
                 .then(actions => this.syncAllActions2DB(actions));
 
     load(dump: string): Promise<TxSyncActionSuccess[]> {

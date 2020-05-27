@@ -66,7 +66,7 @@ it('initializes "by-sequence" table by loading dump string via "load()"', () => 
     .catch(err => console.log('ERROR: ', err))
 });
 
-it('initializes "by-sequence" table by fetching with http call into dump string via "load()"', () => {
+it('initializes "by-sequence" table by fetching dump with http call via "load()"', () => {
     expect.assertions(3);
 
     const webSQLDB = openDatabase(sqliteNames[2], '1', 'blah', 1);
@@ -87,20 +87,18 @@ it('initializes "by-sequence" table by fetching with http call into dump string 
     .catch(err => console.log('ERROR: ', err))
 });
 
-it('inserts all rows from provided dump string via  "load()" "by-sequence" table ', () => {
+it('inserts all rows from provided dump string via  "load()" "by-sequence" table', () => {
     expect.assertions(6);
     const webSQLDB = openDatabase(sqliteNames[3], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
-        // console.log(error);
         expect(error).toBeDefined();
         return ouch.load(dump)
     })
     .then(() => ouch.getAllRows())
     .then(allRows => {
         const rows = allRows[1].rows._array;
-        // console.log(rows)
         const row_ids = rows.map(r => r.doc_id);
         expect(rows.length).toBe(4);
         expect(row_ids).toContain('donatello');
@@ -110,20 +108,18 @@ it('inserts all rows from provided dump string via  "load()" "by-sequence" table
     })
 });
 
-it('inserts all rows from provided dump string via  "load()" "by-sequence" table ', () => {
+it('inserts all rows by fetching dump with http call via "load()"', () => {
     expect.assertions(6);
     const webSQLDB = openDatabase(sqliteNames[4], '1', 'blah', 1);
     const ouch = new OuchDB(webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
-        // console.log(error);
         expect(error).toBeDefined();
-        return ouch.load(dump)
+        return ouch.load('http://127.0.0.22:3000/turtles')
     })
     .then(() => ouch.getAllRows())
     .then(allRows => {
         const rows = allRows[1].rows._array;
-        // console.log(rows)
         const row_ids = rows.map(r => r.doc_id);
         expect(rows.length).toBe(4);
         expect(row_ids).toContain('donatello');

@@ -18,7 +18,7 @@ const router = {
     'donatello': { "name": "Donatello", "weapon": "pizza-knife", "bandana": "purple", "_id": "donatello", "_rev": "5-b587bb2575475e3e50c7807c404d4d49" },
     'michelangelo': { "name": "Michelangelo", "weapon": "bar", "bandana": "orange", "_id": "michelangelo", "_rev": "3-c4902caddb145cfb9ec444d49a12d7cf" },
     '_all_docs': {
-        total_rows: 6,
+        total_rows: 5,
         offset: 0,
         rows: [
         { id:"_design/access", key:"_design/access", value: { rev:"1-451e825a7ec62a68a2a7576cd3d14ad2" }},
@@ -29,7 +29,7 @@ const router = {
         ]
     },
     '_all_docs?include_docs=true': {
-        "total_rows":6,
+        "total_rows":5,
         "offset":0,
         "rows":[
             {"id":"_design/access","key":"_design/access","value":{"rev":"1-451e825a7ec62a68a2a7576cd3d14ad2"},"doc":{"_id":"_design/access","_rev":"1-451e825a7ec62a68a2a7576cd3d14ad2","validate_doc_update":"function(){}"}},
