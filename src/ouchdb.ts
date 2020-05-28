@@ -429,7 +429,10 @@ export class OuchDB {
                  VALUES (?, ?, ?, ?)`,
                 [JSON.stringify(jsonValue), 0, doc._id, doc._rev],
                 (tx, res) => resolve([tx, {...response, ...{ done:'success'}}]),
-                (tx, err) => reject([tx, err]),
+                (tx, err) => {
+                    console.log('ERROR INSERTING doc:', doc._id);
+                    reject([tx, err])
+                },
             )
     });
 
@@ -512,7 +515,8 @@ export class OuchDB {
     getDumpRows = (dump : string, fetchtry = 0): Promise<PouchDBDoc[]> => {
         if(fetchtry < 2){
             const dumps = dump.split('\n');
-            return (dumps.length === 3)
+            console.log('dumpString:', dumps)
+            return (dumps.length >= 3)
                 ? this.try2ParseDump(dumps[1])
                 : this.httpClient.get(dump)
                     .then(res => this.getDumpRows(res, ++fetchtry));
@@ -523,10 +527,12 @@ export class OuchDB {
 
     try2ParseDump = (dump: string): Promise<PouchDBDoc[]> => 
         new Promise((resolve, reject) => {
+            // console.log('trying 2 parse ', dump);
             try{
                 const docs = JSON.parse(dump)['docs'];
                 resolve(docs);
             } catch {
+                console.log('ERROR parsing:',dump);
                 reject();
             }
         })
@@ -566,7 +572,11 @@ export class OuchDB {
                 tx.executeSql(
                     'SELECT COUNT(*) as "docCount" FROM "by-sequence"',
                     [],
-                    (_, res) => resolve(res.rows._array[0]['docCount'] as number),
+                    (_, res) => {
+                        const count = !!res.rows._array ? res.rows._array[0] : res.rows[0];
+                        // console.log('DOCS: ', count);
+                        resolve(count['docCount'] as number)
+                    },
                     (_, err) => reject(err)
                 )
             )
@@ -680,7 +690,7 @@ export class OuchDB {
         doc_count: docCount,
         update_seq: docCount,
         websql_encoding: 'UTF-8',
-        db_name: this.db['_db']['_db']['filename'],
+        db_name: 'thisDB', //this.db['_db']['_db']['filename'],
         auto_compaction: false,
         adapter: 'websql'
     })
