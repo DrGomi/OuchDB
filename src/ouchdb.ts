@@ -50,7 +50,7 @@ type Rows2DocsMapper = (row: PouchDBRow) => AllDocsRow;
 
 export class OuchDB {
     db: WebSQLDatabase;
-    // dbName: string;
+    dbName: string;
     httpClient: HTTPClient;
 
     takeSyncActions = {
@@ -181,8 +181,9 @@ export class OuchDB {
         }       
     ]
 
-    constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
+    constructor(dbName: string, db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
+        this.dbName = dbName;
         // this.dbName = db['_db']['_db']['filename'];
         this.httpClient = httpClient;
         // this.initDBtable()
@@ -278,21 +279,26 @@ export class OuchDB {
         })
 
     // resolves all table names from db as Array<string> 
-    getTables = (): Promise<ResultSetValue[]> => new Promise((resolve, reject)=> 
-        this.db.readTransaction(tx =>
-            tx.executeSql(
-                'SELECT tbl_name from sqlite_master WHERE type = "table"',
-                [],
-                (tx, res) => resolve([tx, res]),
-                (tx, err) => reject([tx, err])
+    getTables = (): Promise<ResultSetValue[]> => 
+        new Promise((resolve, reject)=> 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    'SELECT tbl_name from sqlite_master WHERE type = "table"',
+                    [],
+                    (_, res) => {
+                        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+                        resolve(tables)
+                    },
+                    (tx, err) => reject([tx, err])
+                )
             )
         )
-    ).then((txCb: TxSuccessCallback) => {
-        const [_, res] = txCb;
-        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
-        // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
-        return Promise.resolve(tables);
-    })
+        // .then((txCb: TxSuccessCallback) => {
+        //     const [_, res] = txCb;
+        //     const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+        //     // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
+        //     return Promise.resolve(tables);
+        // })
 
     // drops table from db with given table name
     drobTable = (tx: WebSQLTransaction, tableName: string) => new Promise((resolve, reject) =>
@@ -673,7 +679,7 @@ export class OuchDB {
             tx.executeSql(
                 `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
                  VALUES (?, ?, ?, ?)`,
-                [JSON.stringify(jsonValue), 0, id, '1-YYY'],
+                [JSON.stringify(jsonValue), 0, id, `1-${this.getUuid()}`],
                 (tx, res) => {
                     console.log('SUCCESS')
                     console.log(res)
@@ -690,7 +696,7 @@ export class OuchDB {
         doc_count: docCount,
         update_seq: docCount,
         websql_encoding: 'UTF-8',
-        db_name: 'thisDB', //this.db['_db']['_db']['filename'],
+        db_name: this.dbName, //this.db['_db']['_db']['filename'],
         auto_compaction: false,
         adapter: 'websql'
     })
@@ -786,7 +792,7 @@ export class OuchDB {
     doc2SyncAction = (doc: PouchDBMinimalDoc): DocSyncAction => ({
             state: 'add',
             id: doc._id,
-            doc: { ...doc, ...{ _rev: '1-XXX' } } // TODO generate new id
+            doc: { ...doc, ...{ _rev: `1-${this.getUuid()}` } } // TODO generate new id
         })
 
     addDocIfIdIsNew = (doc: PouchDBMinimalDoc) => {
@@ -810,6 +816,20 @@ export class OuchDB {
         //     id: 'splinter',
         //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
         // }
+
+    // modified from: https://jsperf.com/node-uuid-performance/64 "modified_crazy"
+    getUuid = (): string => {
+        /* eslint-disable no-bitwise */
+        const d2h = [];
+        const vals = new Array(16);
+        for (let i = 0; i < 256; ++i) d2h.push((0x100 + i).toString(16).substr(1));
+        for (let i = 0; i < 16; ++i) vals[i] = Math.random() * 256 | 0;
+        return d2h[vals[0]] + d2h[vals[1]] + d2h[vals[2]] + d2h[vals[3]] +
+            d2h[vals[4]] + d2h[vals[5]] + d2h[vals[6]] + d2h[vals[7]] +
+            d2h[vals[8]] + d2h[vals[9]] + d2h[vals[10]] + d2h[vals[11]] + 
+            d2h[vals[12]] + d2h[vals[13]] + d2h[vals[14]] + d2h[vals[15]];
+    };
+
 
     
 };

@@ -53,7 +53,7 @@ it('initializes "by-sequence" table by loading dump string via "load()"', () => 
     .then(allTables => {
         const tableNb = allTables.rows.length;
         expect(tableNb).toBe(0);
-        const ouch = new OuchDB(webSQLDB, caller);
+        const ouch = new OuchDB(sqliteNames[1], webSQLDB, caller);
         return ouch.load(dump)
     })
     .then(() => getTables(webSQLDB))
@@ -74,7 +74,7 @@ it('initializes "by-sequence" table by fetching dump with http call via "load()"
     .then(allTables => {
         const tableNb = allTables.rows.length;
         expect(tableNb).toBe(0);
-        const ouch = new OuchDB(webSQLDB, caller);
+        const ouch = new OuchDB(sqliteNames[2], webSQLDB, caller);
         return ouch.load('http://127.0.0.22:3000/turtles')
     })
     .then(() => getTables(webSQLDB))
@@ -90,7 +90,7 @@ it('initializes "by-sequence" table by fetching dump with http call via "load()"
 it('inserts all rows from provided dump string via  "load()" "by-sequence" table', () => {
     expect.assertions(6);
     const webSQLDB = openDatabase(sqliteNames[3], '1', 'blah', 1);
-    const ouch = new OuchDB(webSQLDB, caller);
+    const ouch = new OuchDB(sqliteNames[3], webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
         expect(error).toBeDefined();
@@ -111,7 +111,7 @@ it('inserts all rows from provided dump string via  "load()" "by-sequence" table
 it('inserts all rows by fetching dump with http call via "load()"', () => {
     expect.assertions(6);
     const webSQLDB = openDatabase(sqliteNames[4], '1', 'blah', 1);
-    const ouch = new OuchDB(webSQLDB, caller);
+    const ouch = new OuchDB(sqliteNames[4], webSQLDB, caller);
     return ouch.getAllRows()
     .catch(error => {
         expect(error).toBeDefined();
@@ -145,7 +145,7 @@ it('show same output from pouch.info() & ouchdb.info()', () => {
 it('inits "by-sequence" table via ouchdb.info() if neccessary', () => {
     expect.assertions(1);
     const webSQLDB = openDatabase(sqliteNames[6], '1', 'blah', 1);
-    const ouch = new OuchDB(webSQLDB, caller);
+    const ouch = new OuchDB(sqliteNames[6], webSQLDB, caller);
     return ouch.info()
     .then(infos => {
         // console.log(infos)

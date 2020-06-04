@@ -63,6 +63,10 @@ module.exports.turtleDump = `{"version":"1.2.6","db_type":"http","start_time":"2
 {"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
 {"seq":4}`;
 
+module.exports.turtleNVillainDump = `{"version":"1.2.6","db_type":"http","start_time":"2016-04-26T03:46:38.779Z","db_info":{"doc_count":4,"update_seq":4,"sqlite_plugin":false,"websql_encoding":"UTF-8","db_name":"turtles","auto_compaction":false,"adapter":"http","instance_start_time":"1461637740203","host":"http://localhost:6984/turtles/"}}
+{"docs":[{"name":"Donatello","weapon":"bo","bandana":"purple","_id":"turtle_donatello","_rev":"1-c2f9e6a91b946fb378d53c6a4dd6eaa2"},{"name":"Leonardo","weapon":"katana","bandana":"blue","_id":"turtle_leonardo","_rev":"1-c95202ca170be0318d085b33528f7995"},{"name":"Michelangelo","weapon":"nunchaku","bandana":"orange","_id":"turtle_michelangelo","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Raphael","weapon":"sai","bandana":"red","_id":"turtle_raphael","_rev":"1-77812e9da146bc18a37e51efb063dbac"},{"name":"Splinter","weapon":"stick","bandana":"brown","_id":"rat_splinter","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Bebop","weapon":"Pigfangs","bandana":"dirty","_id":"villain_Bebop","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Rocksteady","weapon":"Rhinohorn","bandana":"grey","_id":"villain_Rocksteady","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Krang","weapon":"slime","bandana":"pink","_id":"villain_Krang","_rev":"1-52ebc5a2f8dbc0dc247cd87213e742d1"},{"name":"Shredder","weapon":"bladeglowes","bandana":"silver","_id":"villain_shredder","_rev":"1-77812e9da146bc18a37e51efb063dbac"}]}
+{"seq":9}`;
+
 
 const caller = { 
     get: url => new Promise((resolve, reject) => 
@@ -86,10 +90,10 @@ const caller = {
 
 module.exports.caller = caller; 
 
-module.exports.dbSetup = (index) => {
-    const pouch = new PouchDB(index, {adapter: 'websql'});
-    const webSQLDB = openDatabase(index, '1', 'blah', 1);
-    const ouch = new OuchDB(webSQLDB, caller);
+module.exports.dbSetup = (dbName) => {
+    const pouch = new PouchDB(dbName, {adapter: 'websql'});
+    const webSQLDB = openDatabase(dbName, '1', 'blah', 1);
+    const ouch = new OuchDB(dbName, webSQLDB, caller);
     return [ pouch, ouch, webSQLDB ];
 }
 

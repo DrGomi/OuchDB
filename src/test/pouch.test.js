@@ -9,7 +9,6 @@ const fs = require('fs');
 const dump = require('./test_utils')['turtleDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 
-const sqliteName = 'turtles_1'
 const sqliteNames = [
   'turtles_pouch_1',
   // 'turtles_pouch_2'
