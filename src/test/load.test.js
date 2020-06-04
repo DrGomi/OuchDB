@@ -106,7 +106,7 @@ it('inserts all rows from provided dump string via  "load()" "by-sequence" table
         expect(row_ids).toContain('donatello');
         expect(row_ids).toContain('michelangelo');
         expect(row_ids).toContain('leonardo');
-        expect(row_ids).toContain('splinter');
+        expect(row_ids).toContain('raphael');
     })
 });
 
