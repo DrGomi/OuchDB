@@ -106,11 +106,12 @@ export interface AllDocsResponse {
 //     rows: TurtleFullDocsRow[];
 // }
 
-export type couchResponse = ResultSetRow | AllFullDocsRow |
-AllDocsIdnRevResponse | AllFullDocsResponse // | TurtleAllFullDocsResponse;
+export type couchResponse = AllFullDocsRow | AllDocsIdnRevResponse | AllFullDocsResponse // | TurtleAllFullDocsResponse;
 
 export interface HTTPClient {
     get: (url: string) => Promise<any>;
+    // getJSON: (url: string) => Promise<any>;
+    // getText: (url: string) => Promise<string>;
 }
 
 export type DocSyncState = 'delete' | 'update' | 'add';

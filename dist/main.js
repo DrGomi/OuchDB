@@ -962,7 +962,7 @@ function _objectSpread(target) { for (var i = 1; i < arguments.length; i++) { va
 //     action: (rDoc: AllDocsRow, lDocs: AllDocsRow[]) => DocSyncAction;
 // }
 var OuchDB = /*#__PURE__*/function () {
-  function OuchDB(db, httpClient) {
+  function OuchDB(dbName, db, httpClient) {
     var _this = this;
 
     classCallCheck(this, OuchDB);
@@ -1255,23 +1255,16 @@ var OuchDB = /*#__PURE__*/function () {
     defineProperty(this, "getTables", function () {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
-          return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (tx, res) {
-            return resolve([tx, res]);
+          return tx.executeSql('SELECT tbl_name from sqlite_master WHERE type = "table"', [], function (_, res) {
+            var tables = res.rows._array.map(function (y) {
+              return y['tbl_name'];
+            });
+
+            resolve(tables);
           }, function (tx, err) {
             return reject([tx, err]);
           });
         });
-      }).then(function (txCb) {
-        var _txCb = slicedToArray(txCb, 2),
-            _ = _txCb[0],
-            res = _txCb[1];
-
-        var tables = res.rows._array.map(function (y) {
-          return y['tbl_name'];
-        }); // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
-
-
-        return Promise.resolve(tables);
       });
     });
 
@@ -1408,7 +1401,8 @@ var OuchDB = /*#__PURE__*/function () {
             done: 'success'
           })]);
         }, function (tx, err) {
-          return reject([tx, err]);
+          console.log('ERROR INSERTING doc:', doc._id);
+          reject([tx, err]);
         });
       });
     });
@@ -1425,13 +1419,19 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    defineProperty(this, "getRemoteDoc", function (docID) {
-      return _this.httpClient.get("http://127.0.0.1:3000/".concat(docID));
+    defineProperty(this, "getRemoteDoc", function (remoteDB, docID) {
+      return _this.httpClient.get("".concat(remoteDB, "/").concat(docID));
     });
 
-    defineProperty(this, "getAllRemoteDocs", function () {
+    defineProperty(this, "getAllRemoteDocs", function (remoteDB) {
       return (// need to change the endpoint
-        _this.httpClient.get("http://127.0.0.1:3000/_all_docs?include_docs=true")
+        _this.httpClient.get("".concat(remoteDB, "/_all_docs?include_docs=true"))
+      );
+    });
+
+    defineProperty(this, "getAllRemoteRevs", function (remoteDB) {
+      return (// need to change the endpoint
+        _this.httpClient.get("".concat(remoteDB, "/_all_docs"))
       );
     });
 
@@ -1446,8 +1446,8 @@ var OuchDB = /*#__PURE__*/function () {
       }) : action;
     });
 
-    defineProperty(this, "getRemoteDocs4SyncActions", function (actions) {
-      return _this.getAllRemoteDocs().then(function (res) {
+    defineProperty(this, "getRemoteDocs4SyncActions", function (remoteDB, actions) {
+      return _this.getAllRemoteDocs(remoteDB).then(function (res) {
         var docsMap = res.rows.filter(function (row) {
           return row.id !== '_design/access';
         }).reduce(_this.convertDoc2Map, {});
@@ -1458,10 +1458,10 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    defineProperty(this, "enrichSyncActionsWithDocs", function (actions) {
+    defineProperty(this, "enrichSyncActionsWithDocs", function (remoteDB, actions) {
       return !!actions.find(function (act) {
         return act.state === 'update' || act.state === 'add';
-      }) ? _this.getRemoteDocs4SyncActions(actions) : Promise.resolve(actions) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
+      }) ? _this.getRemoteDocs4SyncActions(remoteDB, actions) : Promise.resolve(actions) // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
       // (actions[0].state === 'update' || actions[0].state === 'add') 
       ;
     });
@@ -1478,8 +1478,8 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
-    defineProperty(this, "processSyncActions", function (actions) {
-      return actions.length == 0 ? Promise.resolve([]) : _this.enrichSyncActionsWithDocs(actions).then(function (actions) {
+    defineProperty(this, "processSyncActions", function (remoteDB, actions) {
+      return actions.length == 0 ? Promise.resolve([]) : _this.enrichSyncActionsWithDocs(remoteDB, actions).then(function (actions) {
         return _this.syncAllActions2DB(actions);
       });
     });
@@ -1503,6 +1503,19 @@ var OuchDB = /*#__PURE__*/function () {
       });
     });
 
+    defineProperty(this, "try2ParseDump", function (dump) {
+      return new Promise(function (resolve, reject) {
+        // console.log('trying 2 parse ', dump);
+        try {
+          var docs = JSON.parse(dump)['docs'];
+          resolve(docs);
+        } catch (_unused) {
+          console.log('ERROR parsing:', dump);
+          reject();
+        }
+      });
+    });
+
     defineProperty(this, "insertDumpRows", function (rows) {
       return _this.getTx().then(function (tx) {
         var addActions = rows.map(function (doc) {
@@ -1521,12 +1534,12 @@ var OuchDB = /*#__PURE__*/function () {
     });
 
     defineProperty(this, "initDBtable", function () {
-      return new Promise(function (resolve, reject) {
+      return new Promise(function (resolve) {
         return _this.db.transaction(function (tx) {
           return tx.executeSql("CREATE TABLE IF NOT EXISTS \"by-sequence\" (\n                        seq INTEGER PRIMARY KEY,\n                        json TEXT,\n                        deleted INT,\n                        doc_id TEXT unique,\n                        rev TEXT\n                    )", [], function () {
             return resolve();
           }, function (_, err) {
-            return reject(err);
+            return resolve();
           });
         });
       });
@@ -1536,7 +1549,9 @@ var OuchDB = /*#__PURE__*/function () {
       return new Promise(function (resolve, reject) {
         return _this.db.readTransaction(function (tx) {
           return tx.executeSql('SELECT COUNT(*) as "docCount" FROM "by-sequence"', [], function (_, res) {
-            return resolve(res.rows._array[0]['docCount']);
+            var count = !!res.rows._array ? res.rows._array[0] : res.rows[0]; // console.log('DOCS: ', count);
+
+            resolve(count['docCount']);
           }, function (_, err) {
             return reject(err);
           });
@@ -1630,7 +1645,7 @@ var OuchDB = /*#__PURE__*/function () {
 
 
         console.log(doc);
-        tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, id, '1-YYY'], function (tx, res) {
+        tx.executeSql("INSERT INTO \"by-sequence\" (json, deleted, doc_id, rev)\n                 VALUES (?, ?, ?, ?)", [JSON.stringify(jsonValue), 0, id, "1-".concat(_this.getUuid())], function (tx, res) {
           console.log('SUCCESS');
           console.log(res);
           resolve(tx);
@@ -1639,6 +1654,18 @@ var OuchDB = /*#__PURE__*/function () {
           reject(err);
         });
       });
+    });
+
+    defineProperty(this, "count2InfoObject", function (docCount) {
+      return {
+        doc_count: docCount,
+        update_seq: docCount,
+        websql_encoding: 'UTF-8',
+        db_name: _this.dbName,
+        //this.db['_db']['_db']['filename'],
+        auto_compaction: false,
+        adapter: 'websql'
+      };
     });
 
     defineProperty(this, "getDocResponse", function (row) {
@@ -1723,7 +1750,7 @@ var OuchDB = /*#__PURE__*/function () {
         state: 'add',
         id: doc._id,
         doc: _objectSpread(_objectSpread({}, doc), {
-          _rev: '1-XXX'
+          _rev: "1-".concat(_this.getUuid())
         }) // TODO generate new id
 
       };
@@ -1733,31 +1760,78 @@ var OuchDB = /*#__PURE__*/function () {
       return _this.checkDocId(doc._id).then(function () {
         return _this.getTx();
       }).then(function (tx) {
-        console.log('trying to put ' + doc._id);
-        console.log('IS IT running? ' + tx._running);
-
+        // console.log('trying to put '+doc._id)
+        // console.log('IS IT running? '+tx._running)
         var addAction = _this.doc2SyncAction(doc);
 
         return _this.addSyncAction(tx, addAction);
       });
     });
 
-    this.db = db; // this.dbName = db['_db']['_db']['filename'];
+    defineProperty(this, "getUuid", function () {
+      /* eslint-disable no-bitwise */
+      var d2h = [];
+      var vals = new Array(16);
+
+      for (var i = 0; i < 256; ++i) {
+        d2h.push((0x100 + i).toString(16).substr(1));
+      }
+
+      for (var _i = 0; _i < 16; ++_i) {
+        vals[_i] = Math.random() * 256 | 0;
+      }
+
+      return d2h[vals[0]] + d2h[vals[1]] + d2h[vals[2]] + d2h[vals[3]] + d2h[vals[4]] + d2h[vals[5]] + d2h[vals[6]] + d2h[vals[7]] + d2h[vals[8]] + d2h[vals[9]] + d2h[vals[10]] + d2h[vals[11]] + d2h[vals[12]] + d2h[vals[13]] + d2h[vals[14]] + d2h[vals[15]];
+    });
+
+    this.db = db;
+    this.dbName = dbName; // this.dbName = db['_db']['_db']['filename'];
 
     this.httpClient = httpClient; // this.initDBtable()
   } // resolves execution context from db
 
 
   createClass(OuchDB, [{
-    key: "load",
-    value: function load(dump) {
+    key: "replicateFrom",
+    value: function replicateFrom(remoteDB) {
       var _this2 = this;
 
+      // compares local with remote docs & returns list with sync actions
+      return this.diffDocsWithRemote(remoteDB) // fetches document bodies & concats these to add/update-actions
+      .then(function (actions) {
+        return actions.length == 0 ? Promise.resolve([]) : _this2.enrichSyncActionsWithDocs(remoteDB, actions).then(function (docsActions) {
+          return _this2.syncAllActions2DB(docsActions);
+        });
+      }); // .then(actions => this.getRemoteDocs4SyncActions(remoteDB, actions))
+      // .then(docActions => this.processSyncActions(remoteDB, docActions))
+    }
+  }, {
+    key: "diffDocsWithRemote",
+    value: function diffDocsWithRemote(remoteDB) {
+      var _this3 = this;
+
+      return Promise.all([this.getLocalAllDocs(), this.getAllRemoteRevs(remoteDB)]).then(function (allDocs) {
+        console.log(allDocs); // get rid of any design_docs
+
+        var onlyRows = [_this3.getCleanAllDocRows(allDocs[0]), _this3.getCleanAllDocRows(allDocs[1])];
+
+        var docDiff = _this3.compareWithRemote(onlyRows);
+
+        return docDiff;
+      });
+    } // resolves all local rows transformed into couchdb _all_docs response 
+
+  }, {
+    key: "load",
+    value: function load(dump) {
+      var _this4 = this;
+
       return new Promise(function (resolve, reject) {
-        return _this2.initDBtable().then(function () {
-          return _this2.getDumpRows(dump);
-        }).then(function (dumpRows) {
-          return _this2.insertDumpRows(dumpRows);
+        return _this4.initDBtable().then(function () {
+          return _this4.getDumpRows(dump);
+        }) // .catch(err => console.log('WHAAT? ', err))
+        .then(function (dumpRows) {
+          return _this4.insertDumpRows(dumpRows);
         }).then(function () {
           return resolve();
         })["catch"](function (err) {
@@ -1770,29 +1844,26 @@ var OuchDB = /*#__PURE__*/function () {
   }, {
     key: "info",
     value: function info() {
-      var _this3 = this;
+      var _this5 = this;
 
-      return this.getDocCount().then(function (docCount) {
-        return {
-          doc_count: docCount,
-          update_seq: docCount,
-          websql_encoding: 'UTF-8',
-          db_name: _this3.db['_db']['_db']['filename'],
-          auto_compaction: false,
-          adapter: 'websql'
-        };
+      return this.getDocCount().then(this.count2InfoObject)["catch"](function () {
+        return (// no recursion...just try once!
+          _this5.initDBtable().then(function () {
+            return _this5.getDocCount();
+          }).then(_this5.count2InfoObject)
+        );
       });
     }
   }, {
     key: "get",
     value: function get(id) {
-      var _this4 = this;
+      var _this6 = this;
 
       return new Promise(function (resolve, reject) {
-        return _this4.getSingleDoc(id).then(function (row) {
-          return resolve(_this4.getDocResponse(row));
+        return _this6.getSingleDoc(id).then(function (row) {
+          return resolve(_this6.getDocResponse(row));
         })["catch"](function (err) {
-          return reject(_this4.getDocError(id));
+          return reject(_this6.getDocError(id));
         });
       });
     }
@@ -1814,6 +1885,7 @@ var OuchDB = /*#__PURE__*/function () {
     //     id: 'splinter',
     //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
     // }
+    // modified from: https://jsperf.com/node-uuid-performance/64 "modified_crazy"
 
   }]);
 

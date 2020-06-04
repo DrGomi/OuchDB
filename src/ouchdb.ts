@@ -181,8 +181,9 @@ export class OuchDB {
         }       
     ]
 
-    constructor(db: WebSQLDatabase, httpClient: HTTPClient) {
+    constructor(dbName: string, db: WebSQLDatabase, httpClient: HTTPClient) {
         this.db = db;
+        this.dbName = dbName;
         // this.dbName = db['_db']['_db']['filename'];
         this.httpClient = httpClient;
         // this.initDBtable()
@@ -278,21 +279,26 @@ export class OuchDB {
         })
 
     // resolves all table names from db as Array<string> 
-    getTables = (): Promise<ResultSetValue[]> => new Promise((resolve, reject)=> 
-        this.db.readTransaction(tx =>
-            tx.executeSql(
-                'SELECT tbl_name from sqlite_master WHERE type = "table"',
-                [],
-                (tx, res) => resolve([tx, res]),
-                (tx, err) => reject([tx, err])
+    getTables = (): Promise<ResultSetValue[]> => 
+        new Promise((resolve, reject)=> 
+            this.db.readTransaction(tx =>
+                tx.executeSql(
+                    'SELECT tbl_name from sqlite_master WHERE type = "table"',
+                    [],
+                    (_, res) => {
+                        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+                        resolve(tables)
+                    },
+                    (tx, err) => reject([tx, err])
+                )
             )
         )
-    ).then((txCb: TxSuccessCallback) => {
-        const [_, res] = txCb;
-        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
-        // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
-        return Promise.resolve(tables);
-    })
+        // .then((txCb: TxSuccessCallback) => {
+        //     const [_, res] = txCb;
+        //     const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+        //     // const tables: string[] = res['rows']['_array'].map(y => y['tbl_name']);
+        //     return Promise.resolve(tables);
+        // })
 
     // drops table from db with given table name
     drobTable = (tx: WebSQLTransaction, tableName: string) => new Promise((resolve, reject) =>
@@ -316,6 +322,37 @@ export class OuchDB {
                 ].map(x => this.drobTable(tx, x))
             )
         );
+
+
+    replicateFrom(remoteDB: string) {
+        // compares local with remote docs & returns list with sync actions
+        return this.diffDocsWithRemote(remoteDB)
+        // fetches document bodies & concats these to add/update-actions
+        .then(actions => actions.length == 0            
+            ? Promise.resolve([] as TxSyncActionSuccess[])
+            : this.enrichSyncActionsWithDocs(remoteDB, actions)
+                  .then(docsActions => this.syncAllActions2DB(docsActions))
+        );
+        // .then(actions => this.getRemoteDocs4SyncActions(remoteDB, actions))
+        // .then(docActions => this.processSyncActions(remoteDB, docActions))
+    }
+
+    diffDocsWithRemote(remoteDB: string): Promise<DocSyncAction[]> {
+        return Promise.all([
+            this.getLocalAllDocs(),
+            this.getAllRemoteRevs(remoteDB)
+        ])
+        .then(allDocs => {
+            console.log(allDocs);
+            // get rid of any design_docs
+            const onlyRows: AllDocRowsTuple = [
+                this.getCleanAllDocRows(allDocs[0]),
+                this.getCleanAllDocRows(allDocs[1])
+            ];
+            const docDiff = this.compareWithRemote(onlyRows);
+            return docDiff;
+        })
+    }
 
     // resolves all local rows transformed into couchdb _all_docs response 
     getLocalAllDocs = (): Promise<AllDocsIdnRevResponse> => 
@@ -398,7 +435,10 @@ export class OuchDB {
                  VALUES (?, ?, ?, ?)`,
                 [JSON.stringify(jsonValue), 0, doc._id, doc._rev],
                 (tx, res) => resolve([tx, {...response, ...{ done:'success'}}]),
-                (tx, err) => reject([tx, err]),
+                (tx, err) => {
+                    console.log('ERROR INSERTING doc:', doc._id);
+                    reject([tx, err])
+                },
             )
     });
 
@@ -412,11 +452,14 @@ export class OuchDB {
             )
     );
 
-    getRemoteDoc = (docID: string): any =>
-            this.httpClient.get(`http://127.0.0.1:3000/${docID}`)
+    getRemoteDoc = (remoteDB: string, docID: string): any =>
+            this.httpClient.get(`${remoteDB}/${docID}`)
 
-    getAllRemoteDocs = ():Promise<CouchAllFullDocsResponse> => // need to change the endpoint
-        this.httpClient.get(`http://127.0.0.1:3000/_all_docs?include_docs=true`)
+    getAllRemoteDocs = (remoteDB: string):Promise<CouchAllFullDocsResponse> => // need to change the endpoint
+        this.httpClient.get(`${remoteDB}/_all_docs?include_docs=true`)
+
+    getAllRemoteRevs = (remoteDB: string):Promise<CouchAllFullDocsResponse> => // need to change the endpoint
+        this.httpClient.get(`${remoteDB}/_all_docs`)
 
     convertDoc2Map = (acc: PouchDocMap, row: CouchFullDocsRow): PouchDocMap => {
         acc[row.id] = row.doc;
@@ -430,8 +473,8 @@ export class OuchDB {
             : action;
 
     // SOQ/18004296/how-to-bulk-fetch-by-ids-in-couchdb-without-creating-a-view
-    getRemoteDocs4SyncActions = (actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
-        this.getAllRemoteDocs()
+    getRemoteDocs4SyncActions = (remoteDB: string, actions: DocSyncAction[]): Promise<DocSyncAction[]> =>
+        this.getAllRemoteDocs(remoteDB)
         .then((res: CouchAllFullDocsResponse) => {
             const docsMap: PouchDocMap = res.rows
                 .filter(row => row.id !== '_design/access')
@@ -445,9 +488,9 @@ export class OuchDB {
         })
 
         // test: do actions require another get '_all_docs' request?
-    enrichSyncActionsWithDocs = (actions: DocSyncAction[]): Promise<DocSyncAction[]> => (
+    enrichSyncActionsWithDocs = (remoteDB: string, actions: DocSyncAction[]): Promise<DocSyncAction[]> => (
         !!actions.find(act => (act.state === 'update' || act.state === 'add'))
-            ? this.getRemoteDocs4SyncActions(actions)
+            ? this.getRemoteDocs4SyncActions(remoteDB, actions)
             : Promise.resolve(actions)
         // below would also work since update/add actions are added before delete (see 'compareWithRemote()')
         // (actions[0].state === 'update' || actions[0].state === 'add') 
@@ -462,15 +505,16 @@ export class OuchDB {
             Promise.all(this.syncAction2DB(tx, actions)) 
         )
 
-    processSyncActions = (actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
+    processSyncActions = (remoteDB: string, actions: DocSyncAction[]): Promise<TxSyncActionSuccess[]> =>
         actions.length == 0            
             ? Promise.resolve([] as TxSyncActionSuccess[])
-            : this.enrichSyncActionsWithDocs(actions)
+            : this.enrichSyncActionsWithDocs(remoteDB, actions)
                 .then(actions => this.syncAllActions2DB(actions));
 
     load(dump: string): Promise<TxSyncActionSuccess[]> {
         return new Promise((resolve, reject) => this.initDBtable()
         .then(() => this.getDumpRows(dump))
+        // .catch(err => console.log('WHAAT? ', err))
         .then((dumpRows: PouchDBDoc[]) => this.insertDumpRows(dumpRows))
         .then(() => resolve())
         .catch(err => {
@@ -501,6 +545,18 @@ export class OuchDB {
             });
     }
 
+    try2ParseDump = (dump: string): Promise<PouchDBDoc[]> => 
+        new Promise((resolve, reject) => {
+            // console.log('trying 2 parse ', dump);
+            try{
+                const docs = JSON.parse(dump)['docs'];
+                resolve(docs);
+            } catch {
+                console.log('ERROR parsing:',dump);
+                reject();
+            }
+        })
+
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
         this.getTx().then(tx => {
             const addActions = rows.map<DocSyncAction>(doc => (
@@ -513,7 +569,7 @@ export class OuchDB {
 
 
     initDBtable = (): Promise<void> =>
-        new Promise((resolve, reject) => 
+        new Promise(resolve => 
             this.db.transaction(tx =>  
                 tx.executeSql(
                     `CREATE TABLE IF NOT EXISTS "by-sequence" (
@@ -525,7 +581,7 @@ export class OuchDB {
                     )`,
                     [],
                     () => resolve(),
-                    (_, err) => reject(err)
+                    (_, err) => resolve()
                 )
             )
         );
@@ -536,7 +592,11 @@ export class OuchDB {
                 tx.executeSql(
                     'SELECT COUNT(*) as "docCount" FROM "by-sequence"',
                     [],
-                    (_, res) => resolve(res.rows._array[0]['docCount'] as number),
+                    (_, res) => {
+                        const count = !!res.rows._array ? res.rows._array[0] : res.rows[0];
+                        // console.log('DOCS: ', count);
+                        resolve(count['docCount'] as number)
+                    },
                     (_, err) => reject(err)
                 )
             )
@@ -633,7 +693,7 @@ export class OuchDB {
             tx.executeSql(
                 `INSERT INTO "by-sequence" (json, deleted, doc_id, rev)
                  VALUES (?, ?, ?, ?)`,
-                [JSON.stringify(jsonValue), 0, id, '1-YYY'],
+                [JSON.stringify(jsonValue), 0, id, `1-${this.getUuid()}`],
                 (tx, res) => {
                     console.log('SUCCESS')
                     console.log(res)
@@ -646,17 +706,23 @@ export class OuchDB {
             )
     });
 
+    count2InfoObject = (docCount: number): InfoObject => ({
+        doc_count: docCount,
+        update_seq: docCount,
+        websql_encoding: 'UTF-8',
+        db_name: this.dbName, //this.db['_db']['_db']['filename'],
+        auto_compaction: false,
+        adapter: 'websql'
+    })
+
     info(): Promise<InfoObject> {
         return this.getDocCount()
-        .then(docCount => ({
-                doc_count: docCount,
-                update_seq: docCount,
-                websql_encoding: 'UTF-8',
-                db_name: this.db['_db']['_db']['filename'],
-                auto_compaction: false,
-                adapter: 'websql'
-            })
-        );
+        .then(this.count2InfoObject)
+        .catch(() => // no recursion...just try once!
+            this.initDBtable()
+            .then(() => this.getDocCount())
+            .then(this.count2InfoObject)
+        )
     }
 
     getDocResponse = (row: PouchDBRow): PouchDBDoc => {
@@ -740,15 +806,15 @@ export class OuchDB {
     doc2SyncAction = (doc: PouchDBMinimalDoc): DocSyncAction => ({
             state: 'add',
             id: doc._id,
-            doc: { ...doc, ...{ _rev: '1-XXX' } } // TODO generate new id
+            doc: { ...doc, ...{ _rev: `1-${this.getUuid()}` } } // TODO generate new id
         })
 
     addDocIfIdIsNew = (doc: PouchDBMinimalDoc) => {
         return this.checkDocId(doc._id)
         .then(() => this.getTx())
         .then(tx => {
-            console.log('trying to put '+doc._id)
-            console.log('IS IT running? '+tx._running)
+            // console.log('trying to put '+doc._id)
+            // console.log('IS IT running? '+tx._running)
             const addAction: DocSyncAction = this.doc2SyncAction(doc);
             return this.addSyncAction(tx, addAction);
         })
@@ -764,6 +830,20 @@ export class OuchDB {
         //     id: 'splinter',
         //     rev: '1-a24f0fc8ad85f4de56ddbe793d0a7057' 
         // }
+
+    // modified from: https://jsperf.com/node-uuid-performance/64 "modified_crazy"
+    getUuid = (): string => {
+        /* eslint-disable no-bitwise */
+        const d2h = [];
+        const vals = new Array(16);
+        for (let i = 0; i < 256; ++i) d2h.push((0x100 + i).toString(16).substr(1));
+        for (let i = 0; i < 16; ++i) vals[i] = Math.random() * 256 | 0;
+        return d2h[vals[0]] + d2h[vals[1]] + d2h[vals[2]] + d2h[vals[3]] +
+            d2h[vals[4]] + d2h[vals[5]] + d2h[vals[6]] + d2h[vals[7]] +
+            d2h[vals[8]] + d2h[vals[9]] + d2h[vals[10]] + d2h[vals[11]] + 
+            d2h[vals[12]] + d2h[vals[13]] + d2h[vals[14]] + d2h[vals[15]];
+    };
+
 
     
 };

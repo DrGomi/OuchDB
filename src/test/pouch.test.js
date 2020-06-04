@@ -9,7 +9,6 @@ const fs = require('fs');
 const dump = require('./test_utils')['turtleDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 
-const sqliteName = 'turtles_1'
 const sqliteNames = [
   'turtles_pouch_1',
   // 'turtles_pouch_2'
@@ -69,7 +68,7 @@ it('maps all rows from "by-sequence" into an array', () => {
     .then(() => ouch.getAllRows("by-sequence"))
     .then(txNrs => {
         const rowNb = ouch.mapDocRows(txNrs[1]).length;
-        console.log(ouch.mapDocRows(txNrs[1]))
+        // console.log(ouch.mapDocRows(txNrs[1]))
         expect(rowNb).toEqual(10);
         return ouch.pruneOldLocalRevs()
     })
