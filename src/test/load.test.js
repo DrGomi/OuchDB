@@ -1,6 +1,7 @@
 import { OuchDB } from '../../dist/main';
 const mockCouchDB = require('./test_utils')['mockCouchDB'];
 const dump = require('./test_utils')['turtleDump'];
+const pouchDump = require('./test_utils')['turtlePouchDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 const getTables = require('./test_utils')['getTables'];
 const caller = require('./test_utils')['caller']; 
@@ -32,7 +33,7 @@ afterAll(() =>  {
 it('loads dump into pouchdb', () => {
     expect.assertions(4);
     const [ pouch, ouch, webSQLDB ] = dbSetup(sqliteNames[0]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     // .then(() => getInfo(webSQLDB))
     // .then(info => console.log(info.rows._array))
     .then(() => ouch.getLocalAllDocs())
@@ -100,11 +101,12 @@ it('inserts all rows from provided dump string via  "load()" "by-sequence" table
     .then(allRows => {
         const rows = allRows[1].rows._array;
         const row_ids = rows.map(r => r.doc_id);
+        console.log(row_ids)
         expect(rows.length).toBe(4);
         expect(row_ids).toContain('donatello');
         expect(row_ids).toContain('michelangelo');
         expect(row_ids).toContain('leonardo');
-        expect(row_ids).toContain('raphael');
+        expect(row_ids).toContain('splinter');
     })
 });
 
@@ -125,14 +127,14 @@ it('inserts all rows by fetching dump with http call via "load()"', () => {
         expect(row_ids).toContain('donatello');
         expect(row_ids).toContain('michelangelo');
         expect(row_ids).toContain('leonardo');
-        expect(row_ids).toContain('raphael');
+        expect(row_ids).toContain('splinter');
     })
 });
 
 it('show same output from pouch.info() & ouchdb.info()', () => {
     expect.assertions(1);
     const [ pouch, ouch ] = dbSetup(sqliteNames[5]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => Promise.all([
         pouch.info(),
         ouch.info()

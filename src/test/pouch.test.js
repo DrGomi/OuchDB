@@ -6,7 +6,7 @@
 // PouchDB.plugin(require('pouchdb-adapter-node-websql'));
 const fs = require('fs');
 
-const dump = require('./test_utils')['turtleDump'];
+const pouchDump = require('./test_utils')['turtlePouchDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 
 const sqliteNames = [
@@ -25,7 +25,7 @@ const updateWeapon = (name, arm) =>
 
 const [ pouch, ouch ] = dbSetup(sqliteNames[0]);
 
-beforeAll(() => pouch.load(dump));
+beforeAll(() => pouch.load(pouchDump));
 
 afterAll(() =>  {
   sqliteNames.forEach(db => fs.unlinkSync(db));

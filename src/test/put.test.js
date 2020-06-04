@@ -1,5 +1,6 @@
 const fs = require('fs');
-const dump = require('./test_utils')['turtleDump'];
+// const dump = require('./test_utils')['turtleDump'];
+const pouchDump = require('./test_utils')['turtlePouchDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 
 const sqliteNames = [ 'turtles_put_1' ];
@@ -7,7 +8,7 @@ const [ pouch, ouch ] = dbSetup(sqliteNames[0]);
 
 
 beforeAll(() =>  {
-    return pouch.load(dump);
+    return pouch.load(pouchDump);
 })
 
 afterAll(() =>  {

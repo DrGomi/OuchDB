@@ -1,5 +1,5 @@
 const mockCouchDB = require('./test_utils')['mockCouchDB'];
-const dump = require('./test_utils')['turtleDump'];
+const pouchDump = require('./test_utils')['turtlePouchDump'];
 const dbSetup = require('./test_utils')['dbSetup'];
 // const caller = require('./test_utils')['caller']; 
 
@@ -7,7 +7,7 @@ const fs = require('fs');
 
 const couchDBPort = 3300;
 const couchDBIP = '127.0.0.11'
-const remoteDB = `http://${couchDBIP}:${couchDBPort}`;
+const remoteDB = `http://${couchDBIP}:${couchDBPort}/turtles`;
 mockCouchDB.listen(couchDBPort , couchDBPort);
 
 
@@ -43,7 +43,7 @@ afterAll(() =>  {
 it('transforms local db rows into CouchDB compatible _all_docs format', () => {
     expect.assertions(4);
     const [ pouch, ouch ] = dbSetup(sqliteNames[0]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => ouch.getLocalAllDocs())
     .then(allDocs => {
         const allDocsKeys = Object.keys(allDocs);
@@ -58,7 +58,7 @@ it('maps _all_docs format to rows containing only docs', () => {
     expect.assertions(3);
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[1]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => {
         expect(allRemoteDocs === Object(allRemoteDocs)).toBeTruthy()
         const cleanDocs = ouch.getCleanAllDocRows(allRemoteDocs);
@@ -73,7 +73,7 @@ it('compares local with remote docs & returns list with sync actions', () => {
     expect.assertions(6);
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[2]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => Promise.all([
         ouch.getLocalAllDocs(),
         ouch.getAllRemoteRevs(remoteDB)
@@ -98,7 +98,7 @@ it('compares local with remote docs & returns list with sync actions', () => {
     expect.assertions(6);
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[2]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => ouch.diffDocsWithRemote(remoteDB))
     .then(docDiff => {
         // const onlyRows = allDBDocs.map(ouch.getCleanAllDocRows);
@@ -150,7 +150,7 @@ it('requests all_docs from remote endpoint', () => {
     ];
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[5]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => ouch.getRemoteDocs4SyncActions(remoteDB, docActions))
     .then(eActions =>  {
       expect(eActions.length).toBe(4);
@@ -171,7 +171,7 @@ it('requests all_docs from remote endpoint', () => {
       { state: 'delete', id: 'raphael' }
     ]
     const [ pouch, ouch ] = dbSetup(sqliteNames[6]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => ouch.getAllRows())
     .then(allRows => {
       const rows = allRows[1].rows._array;
@@ -198,7 +198,7 @@ it('requests all_docs from remote endpoint', () => {
     const docActions = [];
 
     const [ pouch, ouch ] = dbSetup(sqliteNames[7]);
-    return pouch.load(dump)
+    return pouch.load(pouchDump)
     .then(() => ouch.getAllRows())
     .then(allRows => {
       const rows = allRows[1].rows._array;

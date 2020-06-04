@@ -343,7 +343,7 @@ export class OuchDB {
             this.getAllRemoteRevs(remoteDB)
         ])
         .then(allDocs => {
-            console.log(allDocs);
+            // console.log(allDocs);
             // get rid of any design_docs
             const onlyRows: AllDocRowsTuple = [
                 this.getCleanAllDocRows(allDocs[0]),
@@ -514,7 +514,6 @@ export class OuchDB {
     load(dump: string): Promise<TxSyncActionSuccess[]> {
         return new Promise((resolve, reject) => this.initDBtable()
         .then(() => this.getDumpRows(dump))
-        // .catch(err => console.log('WHAAT? ', err))
         .then((dumpRows: PouchDBDoc[]) => this.insertDumpRows(dumpRows))
         .then(() => resolve())
         .catch(err => {
@@ -523,39 +522,51 @@ export class OuchDB {
         })
         )
     }
+
+
     // checks if dump string contains dump or just a url to dump file...
     getDumpRows = (dump : string): Promise<PouchDBDoc[]> => {
-        const dumps = dump.split('\n');
-        console.log(dumps.length)
-        return (dumps.length === 3)
-        // ? Promise.resolve(JSON.parse(dumps[1])['docs'])
-        ? new Promise((resolve, reject) => {
-            try {
-                    console.log(dumps[1])
-                    const dumpDocs = JSON.parse(dumps[1])['docs'];
-                    resolve(dumpDocs);
-                } catch(err) {
-                    console.log('ERROR ',err);
-                    reject(err)
-                }
-            })
-            : this.httpClient.get(dump).then(res => {
-                console.log('GOT ',res);
-                return this.getDumpRows(res)
-            });
+        return this.try2ParseDump(dump)
+        .catch(() => this.getAllRemoteDocs(dump))
+        .then(allDocs => allDocs.rows
+            .filter(row => row.id !== '_design/access')
+            .map(row => row.doc)
+        )
     }
 
-    try2ParseDump = (dump: string): Promise<PouchDBDoc[]> => 
+    try2ParseDump = (dump: string): Promise<CouchAllFullDocsResponse> => 
         new Promise((resolve, reject) => {
-            // console.log('trying 2 parse ', dump);
             try{
-                const docs = JSON.parse(dump)['docs'];
+                const docs = JSON.parse(dump);
                 resolve(docs);
             } catch {
                 console.log('ERROR parsing:',dump);
                 reject();
             }
         })
+
+    // getDumpRows = (dump : string): Promise<PouchDBDoc[]> => {
+    //     const dumps = dump.split('\n');
+    //     console.log(dumps.length)
+    //     return (dumps.length === 3)
+    //         ? this.try2ParseDump(dumps[1])
+    //         : this.httpClient.get(dump).then(res => {
+    //             // console.log('GOT ',res);
+    //             return this.getDumpRows(res);
+    //         });
+    // }
+
+    // try2ParseDump = (dump: string): Promise<PouchDBDoc[]> => 
+    //     new Promise((resolve, reject) => {
+    //         // console.log('trying 2 parse ', dump);
+    //         try{
+    //             const docs = JSON.parse(dump)['docs'];
+    //             resolve(docs);
+    //         } catch {
+    //             console.log('ERROR parsing:',dump);
+    //             reject();
+    //         }
+    //     })
 
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
         this.getTx().then(tx => {
