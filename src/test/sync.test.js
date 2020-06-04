@@ -118,7 +118,7 @@ it('compares local with remote docs & returns list with sync actions', () => {
 it('requests doc from remote endpoint', () => {
     expect.assertions(2);
 
-    const [ pouch, ouch ] = dbSetup(sqliteNames[3]);
+    const [ _, ouch ] = dbSetup(sqliteNames[3]);
     // return pouch.load(dump)
     // .then(() => ouch.getRemoteDoc('splinter'))
     return ouch.getRemoteDoc(remoteDB,'splinter')
@@ -131,7 +131,7 @@ it('requests doc from remote endpoint', () => {
 
 it('requests all_docs from remote endpoint', () => {
     expect.assertions(1);
-    const [ pouch, ouch ] = dbSetup(sqliteNames[4]);
+    const [ _, ouch ] = dbSetup(sqliteNames[4]);
     // return pouch.load(dump)
     return ouch.getAllRemoteDocs(remoteDB)
     .then(res => {
