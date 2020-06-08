@@ -134,7 +134,8 @@ export class OuchDB {
                         offset: 0,
                         // rows: res
                         rows: option.keys.reduce((acc, key) => {
-                            const foundRow = rows._array.find(row => row.doc_id === key);
+                            const foundRow = this.safeRows(rows).find(row => row.doc_id === key);
+                            // const foundRow = rows._array.find(row => row.doc_id === key);
                             const returnDoc = !!foundRow 
                                 ? this.map2AllFullDoc(foundRow) 
                                 : { key: key, error: 'not_found'};
@@ -162,8 +163,11 @@ export class OuchDB {
                 "endkey" in option &&
                 (!("include_docs" in option) || option['include_docs'] !== true)
             ),
-            action: (option: AllDocsOptions) => this.getAllDocsWithStartId(option.startkey)
+            action: (option: AllDocsOptions) => {
+                console.log('SUCCESS', option);
+                return this.getAllDocsWithStartId(option.startkey)
                 .then(res => this.mapAllDocs2Response(this.map2AllDoc)(res))
+            }
         },{            
             test: (option: AllDocsOptions) => (
                 "startkey" in option &&
@@ -286,7 +290,7 @@ export class OuchDB {
                     'SELECT tbl_name from sqlite_master WHERE type = "table"',
                     [],
                     (_, res) => {
-                        const tables: ResultSetValue[] = res.rows._array.map(y => y['tbl_name']);
+                        const tables: ResultSetValue[] = this.safeResultRows(res).map(y => y['tbl_name']);
                         resolve(tables)
                     },
                     (tx, err) => reject([tx, err])
@@ -527,8 +531,9 @@ export class OuchDB {
     // checks if dump string contains dump or just a url to dump file...
     getDumpRows = (dump : string): Promise<PouchDBDoc[]> => {
         return this.try2ParseDump(dump)
-        .catch(() => this.getAllRemoteDocs(dump))
-        .then(allDocs => allDocs.rows
+        .catch(() => this.httpClient.get(dump))
+        .then((allDocs: CouchAllFullDocsResponse) => 
+            allDocs.rows
             .filter(row => row.id !== '_design/access')
             .map(row => row.doc)
         )
@@ -567,9 +572,22 @@ export class OuchDB {
     //             reject();
     //         }
     //     })
+    safeResultRows = (res: WebSQLResultSet): PouchDBRow[] => (
+        res.rows._array 
+            ? res.rows._array
+            : Object.keys(res.rows).map(x => res.rows[x])
+            // : res.rows
+        ) as PouchDBRow[];
+
+    safeRows = (rows: WebSQLRows): PouchDBRow[] => (
+        rows._array 
+            ? rows._array
+            : Object.keys(rows).map(x => rows[x])
+        ) as PouchDBRow[];
 
     insertDumpRows = (rows: PouchDBDoc[]): Promise<TxSyncActionSuccess[]> =>
-        this.getTx().then(tx => {
+        this.getTx()
+        .then(tx => {
             const addActions = rows.map<DocSyncAction>(doc => (
                 // map doc to DocySyncAction
                 { state: 'add', id: doc._id, doc: doc } 
@@ -592,7 +610,7 @@ export class OuchDB {
                     )`,
                     [],
                     () => resolve(),
-                    (_, err) => resolve()
+                    () => resolve()
                 )
             )
         );
@@ -604,9 +622,8 @@ export class OuchDB {
                     'SELECT COUNT(*) as "docCount" FROM "by-sequence"',
                     [],
                     (_, res) => {
-                        const count = !!res.rows._array ? res.rows._array[0] : res.rows[0];
-                        // console.log('DOCS: ', count);
-                        resolve(count['docCount'] as number)
+                        const count: number = this.safeResultRows(res)[0]['docCount'];
+                        resolve(count)
                     },
                     (_, err) => reject(err)
                 )
@@ -619,7 +636,10 @@ export class OuchDB {
                 tx.executeSql(
                     `SELECT * FROM "by-sequence" WHERE doc_id="${id}"`,
                     [],
-                    (_, res) => resolve(res.rows._array[0]),
+                    (_, res) => {
+                        const doc: PouchDBRow = this.safeResultRows(res)[0]
+                        resolve(doc);
+                    },
                     (_, err) => reject(err)
                 )
             )
@@ -672,9 +692,12 @@ export class OuchDB {
                 tx.executeSql(
                     `SELECT rev FROM "by-sequence" WHERE doc_id="${id}"`,
                     [],
-                    (_, res) => (res.rows.length > 0 && 'rev' in res.rows._array[0])
-                            ? resolve(res.rows._array[0]['rev'] as string)
-                            : reject(),
+                    (_, res) => {
+                        const rowsArray: PouchDBRow[] = this.safeResultRows(res);
+                        (rowsArray.length > 0 && 'rev' in rowsArray[0])
+                            ? resolve(rowsArray[0]['rev'] as string)
+                            : reject()
+                        },
                     (_, err) => reject(err)
                 )
             )
@@ -776,16 +799,20 @@ export class OuchDB {
 
 
     mapAllDocs2Response = (lambda: Rows2DocsMapper)  => 
-        (rows: WebSQLRows): Promise<AllDocsResponse> =>
-            Promise.resolve<AllDocsResponse>({
+        (rows: WebSQLRows): Promise<AllDocsResponse> => {
+            // console.log(rowsArray);
+            return Promise.resolve<AllDocsResponse>({
                     total_rows: rows.length,
                     offset: 0,
-                    rows: rows._array.map<AllDocsRow>(lambda)
+                    // rows: rowsArray.map<AllDocsRow>(lambda)
+                    // rows: rows._array.map<AllDocsRow>(lambda)
+                    rows: this.safeRows(rows).map<AllDocsRow>(lambda)
                 })
+        }
 
 
 
-    allDocs(option: AllDocsOptions): Promise<AllDocsResponse> {
+    public allDocs(option: AllDocsOptions): Promise<AllDocsResponse> {
         return this.allDocsActions
                 .find(i => i.test(option)).action(option)
     };

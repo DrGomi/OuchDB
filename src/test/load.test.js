@@ -76,7 +76,7 @@ it('initializes "by-sequence" table by fetching dump with http call via "load()"
         const tableNb = allTables.rows.length;
         expect(tableNb).toBe(0);
         const ouch = new OuchDB(sqliteNames[2], webSQLDB, caller);
-        return ouch.load('http://127.0.0.22:3000/turtles')
+        return ouch.load('http://127.0.0.22:3000/turtles/_all_docs?include_docs=true')
     })
     .then(() => getTables(webSQLDB))
     .then(allTables => {
@@ -117,7 +117,7 @@ it('inserts all rows by fetching dump with http call via "load()"', () => {
     return ouch.getAllRows()
     .catch(error => {
         expect(error).toBeDefined();
-        return ouch.load('http://127.0.0.22:3000/turtles')
+        return ouch.load('http://127.0.0.22:3000/turtles/_all_docs?include_docs=true')
     })
     .then(() => ouch.getAllRows())
     .then(allRows => {
