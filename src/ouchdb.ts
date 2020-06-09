@@ -1,4 +1,5 @@
 // from : https://github.com/expo/expo/tree/master/packages/expo-sqlite/src
+// # sed '3s/.*/\/\/ removed/;s/exports.OuchDB/\/\/ exports.OuchDB/' $ouchBuild > $ouchInApp
 import { 
     // WebSQLiteCallback,
     // ResultSet,
@@ -363,7 +364,8 @@ export class OuchDB {
         this.getAllRows()
         .then(txNrs => {
             const [_, res] = txNrs;
-            const rows: PouchDBRow[] = this.mapDocRows(res)
+            // const rows: PouchDBRow[] = this.mapDocRows(res);
+            const rows: PouchDBRow[] = this.safeResultRows(res);
             const allDocs: AllDocsIdnRevResponse =  {
                 total_rows: rows.length,
                 offset: 0,
